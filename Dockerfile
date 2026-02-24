@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir 'aiohttp>=3.9' --only-binary aiohttp && \
 
 COPY main.py .
 
+# Run as non-root (security)
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app
+USER appuser
+
 ENV HOST=0.0.0.0
 ENV PORT=8000
 EXPOSE 8000

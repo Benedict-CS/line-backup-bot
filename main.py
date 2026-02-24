@@ -5,6 +5,8 @@ Receives image/video/audio/file messages, downloads content, uploads to Nextclou
 import json
 import logging
 import os
+import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -128,15 +130,19 @@ def guess_extension(message_type: str) -> str:
 
 
 def upload_to_nextcloud(
-    content: bytes,
     suggested_name: str,
     message_type: str,
     source_folder: str = "other",
+    *,
+    content: bytes | None = None,
+    file_path: Path | None = None,
 ) -> str:
     """
     Upload to Nextcloud under LINE_Backup/{source_folder}/YYYY-MM-DD/ (Taipei time).
-    source_folder = "other" by default; or e.g. "Amigo" when user sent "1" before (see SOURCE_MAP).
+    Provide either content (bytes) or file_path; file_path is streamed to reduce memory.
     """
+    if (content is None) == (file_path is None):
+        raise ValueError("Provide exactly one of content or file_path")
     now = datetime.now(TZ)
     date_folder = now.strftime("%Y-%m-%d")
     date_compact = now.strftime("%Y%m%d")
@@ -153,19 +159,28 @@ def upload_to_nextcloud(
     remote_path = f"{remote_dir}/{safe_name}"
 
     auth = (NEXTCLOUD_USER, NEXTCLOUD_PASSWORD)
-
-    for part in [base, f"{base}/{source_safe}", remote_dir]:
-        url_dir = _nextcloud_webdav_url(part + "/")
-        r = requests.request("MKCOL", url_dir, auth=auth, timeout=30)
-        if r.status_code not in (201, 204, 405):
-            raise RuntimeError(f"MKCOL {part}: {r.status_code} {r.text[:200]}")
-
-    url_file = _nextcloud_webdav_url(remote_path)
-    r3 = requests.put(url_file, data=content, auth=auth, timeout=60)
-    if r3.status_code not in (200, 201, 204):
-        raise RuntimeError(f"PUT {remote_path}: {r3.status_code} {r3.text[:200]}")
-
-    return remote_path
+    last_err = None
+    for attempt in range(3):
+        try:
+            for part in [base, f"{base}/{source_safe}", remote_dir]:
+                url_dir = _nextcloud_webdav_url(part + "/")
+                r = requests.request("MKCOL", url_dir, auth=auth, timeout=30)
+                if r.status_code not in (201, 204, 405):
+                    raise RuntimeError(f"MKCOL {part}: {r.status_code} {r.text[:200]}")
+            url_file = _nextcloud_webdav_url(remote_path)
+            if file_path is not None:
+                with open(file_path, "rb") as f:
+                    r3 = requests.put(url_file, data=f, auth=auth, timeout=120)
+            else:
+                r3 = requests.put(url_file, data=content, auth=auth, timeout=120)
+            if r3.status_code not in (200, 201, 204):
+                raise RuntimeError(f"PUT {remote_path}: {r3.status_code} {r3.text[:200]}")
+            return remote_path
+        except Exception as e:
+            last_err = e
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    raise last_err
 
 
 @app.get("/")
@@ -227,17 +242,28 @@ def _handle_media_message(event):
             TextSendMessage(text="收到檔案，準備下載..."),
         )
 
+    tmp_path = None
     try:
         content_response = line_bot_api.get_message_content(message_id)
-        binary = b"".join(content_response.iter_content())
-
-        if not binary:
+        fd, tmp_path = tempfile.mkstemp(prefix="line_backup_", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                for chunk in content_response.iter_content(chunk_size=65536):
+                    f.write(chunk)
+        except Exception:
+            os.unlink(tmp_path)
+            tmp_path = None
+            raise
+        tmp_path = Path(tmp_path)
+        size = tmp_path.stat().st_size
+        if size == 0:
             if ENABLE_LINE_REPLIES and user_id:
                 line_bot_api.push_message(user_id, TextSendMessage(text="無法取得檔案內容。"))
+            tmp_path.unlink(missing_ok=True)
             return
 
         if MAX_FILE_SIZE_MB > 0:
-            size_mb = len(binary) / (1024 * 1024)
+            size_mb = size / (1024 * 1024)
             if size_mb > MAX_FILE_SIZE_MB:
                 log.warning("File too large: %.2f MB (max %.2f MB)", size_mb, MAX_FILE_SIZE_MB)
                 if ENABLE_LINE_REPLIES and user_id:
@@ -245,13 +271,17 @@ def _handle_media_message(event):
                         user_id,
                         TextSendMessage(text=f"檔案過大 ({size_mb:.1f} MB)，已略過（上限 {MAX_FILE_SIZE_MB:.0f} MB）"),
                     )
+                tmp_path.unlink(missing_ok=True)
                 return
 
         suggested_name = getattr(msg, "file_name", None) or f"{message_type}_{message_id}"
         source_folder = _user_source.get(user_id, "other")
-        remote_path = upload_to_nextcloud(
-            binary, suggested_name, message_type, source_folder=source_folder
-        )
+        try:
+            remote_path = upload_to_nextcloud(
+                suggested_name, message_type, source_folder=source_folder, file_path=tmp_path
+            )
+        finally:
+            tmp_path.unlink(missing_ok=True)
         log.info("Backup ok: %s", remote_path)
         if ENABLE_LINE_REPLIES and user_id:
             line_bot_api.push_message(

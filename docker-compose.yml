@@ -19,3 +19,6 @@ services:
       - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-0}
     env_file:
       - .env
+    volumes:
+      # Persist source state (SOURCE_STATE_FILE=data/source_state.json) across restarts
+      - ./data:/app/data

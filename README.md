@@ -77,6 +77,8 @@ docker compose up -d
 
 容器內服務監聽 `0.0.0.0:8000`。`docker-compose.yml` 會讀取同目錄下的 `.env`，並設定 `TZ=Asia/Taipei` 與 LINE / Nextcloud 相關環境變數。
 
+容器以非 root 使用者執行。若使用 volume `./data` 存放來源狀態，請確保主機目錄可寫，例如：`mkdir -p data && chown 1000:1000 data`。
+
 ## Environment variables
 
 | Variable | Description |
@@ -104,6 +106,12 @@ docker compose up -d
 - `GET /health` – **Health check**: 200 if Nextcloud reachable (PROPFIND), else 503
 - `GET /debug-webdav` – Test Nextcloud WebDAV (create base folder)
 - `POST /callback` – LINE Webhook (signature-verified)
+
+## 資料存放說明（不會堆在本地）
+
+- **媒體檔案**：不會長期留在本機。流程是「LINE 下載 → 暫存檔（僅傳輸中）→ 上傳 Nextcloud → 立刻刪除暫存檔」，所以**只有 Nextcloud 上有備份**，本地不會累積媒體。
+- **本地僅存的**：若設定 `SOURCE_STATE_FILE`（例如 `data/source_state.json`），只會有一個小 JSON 檔記錄「使用者編號 → 來源資料夾」，體積很小，**不需要定期清理**。
+- **暫存檔**：下載／上傳過程會用系統 temp 目錄的暫存檔以節省記憶體，上傳成功或失敗後都會刪除，不會越積越大。
 
 ## Tips / 注意
 

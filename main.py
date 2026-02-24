@@ -5,6 +5,7 @@ Receives image/video/audio/file messages, downloads content, uploads to Nextclou
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from datetime import datetime
@@ -57,6 +58,15 @@ def _safe_folder_name(name: str) -> str:
     """Allow only alphanumeric, underscore, hyphen; max 32 chars."""
     s = "".join(c if c.isalnum() or c in "_-" else "_" for c in name)
     return s[:32] or "other"
+
+
+def _safe_file_stem(name: str, max_len: int = 80) -> str:
+    """Sanitize original filename stem for 'files' type: keep alphanumeric, space, underscore, hyphen, dot."""
+    p = Path(name)
+    stem = (p.stem or p.name or "file").strip()
+    s = "".join(c if c.isalnum() or c in " _-." else "_" for c in stem)
+    s = "_".join(s.split())  # collapse spaces to single underscore
+    return (s[:max_len] or "file").strip("._")
 
 
 # Source list: number -> folder name. e.g. 1:Amigo,2:Ben,3:Mom . No number / unknown = save under "other"
@@ -125,8 +135,13 @@ def guess_extension(message_type: str) -> str:
         "video": ".mp4",
         "audio": ".m4a",
         "file": "",
+        "link": ".txt",
     }
     return m.get(message_type, "")
+
+
+# Subfolder under date: image, video, link, files (audio and file messages go under "files")
+_TYPE_SUBFOLDER = {"image": "image", "video": "video", "link": "link", "audio": "files", "file": "files"}
 
 
 def upload_to_nextcloud(
@@ -138,7 +153,7 @@ def upload_to_nextcloud(
     file_path: Path | None = None,
 ) -> str:
     """
-    Upload to Nextcloud under LINE_Backup/{source_folder}/YYYY-MM-DD/ (Taipei time).
+    Upload to Nextcloud under LINE_Backup/{source}/YYYY-MM-DD/{type}/ (type: image, video, link, files).
     Provide either content (bytes) or file_path; file_path is streamed to reduce memory.
     """
     if (content is None) == (file_path is None):
@@ -151,18 +166,23 @@ def upload_to_nextcloud(
     ext = guess_extension(message_type)
     if not ext and suggested_name:
         ext = Path(suggested_name).suffix or ""
-    prefix = {"image": "img", "video": "vid", "audio": "aud", "file": "file"}.get(message_type, "file")
-    safe_name = f"{prefix}_{date_compact}_{time_compact}_{ms}{ext}"
+    if message_type == "file":
+        stem = _safe_file_stem(suggested_name)
+        safe_name = f"{stem}{ext}"
+    else:
+        prefix = {"image": "img", "video": "vid", "audio": "aud", "link": "link"}.get(message_type, "file")
+        safe_name = f"{prefix}_{date_compact}_{time_compact}_{ms}{ext}"
     base = (NEXTCLOUD_BASE_PATH or "LINE_Backup").strip("/")
     source_safe = _safe_folder_name(source_folder) or "other"
-    remote_dir = f"{base}/{source_safe}/{date_folder}"
+    type_subfolder = _TYPE_SUBFOLDER.get(message_type, "files")
+    remote_dir = f"{base}/{source_safe}/{date_folder}/{type_subfolder}"
     remote_path = f"{remote_dir}/{safe_name}"
 
     auth = (NEXTCLOUD_USER, NEXTCLOUD_PASSWORD)
     last_err = None
     for attempt in range(3):
         try:
-            for part in [base, f"{base}/{source_safe}", remote_dir]:
+            for part in [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}", remote_dir]:
                 url_dir = _nextcloud_webdav_url(part + "/")
                 r = requests.request("MKCOL", url_dir, auth=auth, timeout=30)
                 if r.status_code not in (201, 204, 405):
@@ -228,6 +248,41 @@ def debug_webdav():
         return {"ok": False, "steps": steps}
 
 
+# Skip duplicate webhook delivery (LINE may retry): remember recent message_ids, cap size
+_processed_message_ids: set[str] = set()
+_MAX_PROCESSED_IDS = 10000
+
+
+# Match http(s) URL; strip trailing punctuation that might be part of sentence
+_URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+
+
+def _extract_urls(text: str) -> list[str]:
+    """Return list of URLs found in text (order preserved)."""
+    return _URL_PATTERN.findall(text)
+
+
+def _backup_links_to_nextcloud(text: str, source_folder: str, user_id: str | None) -> None:
+    """Save link message as a text file under LINE_Backup/{source_folder}/YYYY-MM-DD/."""
+    body = text.strip()
+    if not body:
+        return
+    try:
+        remote_path = upload_to_nextcloud(
+            "link.txt",
+            "link",
+            source_folder=source_folder,
+            content=body.encode("utf-8"),
+        )
+        log.info("Link backup ok: %s", remote_path)
+        if ENABLE_LINE_REPLIES and user_id:
+            line_bot_api.push_message(user_id, TextSendMessage(text="✅ 連結已備份至 Nextcloud！"))
+    except Exception as e:
+        log.exception("Link backup failed")
+        if ENABLE_LINE_REPLIES and user_id:
+            line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 連結備份失敗：{str(e)[:500]}"))
+
+
 def _handle_media_message(event):
     """Handle image/video/audio/file: optional reply/push (ENABLE_LINE_REPLIES), download, upload to Nextcloud."""
     msg = event.message
@@ -235,6 +290,13 @@ def _handle_media_message(event):
     message_id = msg.id
     message_type = msg.type
     user_id = getattr(event.source, "user_id", None) if hasattr(event, "source") else None
+
+    if message_id in _processed_message_ids:
+        log.info("Skip duplicate message_id: %s", message_id)
+        return
+    if len(_processed_message_ids) >= _MAX_PROCESSED_IDS:
+        _processed_message_ids.clear()
+    _processed_message_ids.add(message_id)
 
     if ENABLE_LINE_REPLIES:
         line_bot_api.reply_message(
@@ -299,11 +361,12 @@ def _handle_media_message(event):
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text(event):
-    """Set source folder for next media: send "1" -> Amigo, "2" -> Ben, ...; "0" or "other" -> other."""
+    """Set source folder for next media; backup messages that contain links."""
     text = (event.message.text or "").strip()
     user_id = getattr(event.source, "user_id", None) if hasattr(event, "source") else None
     if not user_id:
         return
+    # Source folder switching: "0"/"other" -> other; "1"/"2"/... -> SOURCE_MAP
     if text.lower() in ("0", "other", "reset", "預設"):
         _user_source[user_id] = "other"
         _save_source_state()
@@ -318,6 +381,20 @@ def handle_text(event):
                 event.reply_token,
                 TextSendMessage(text=f"已設為：{SOURCE_MAP[text]}"),
             )
+        return
+    # Backup messages that contain at least one http(s) URL to Nextcloud (skip duplicate delivery)
+    urls = _extract_urls(text)
+    if urls:
+        message_id = getattr(event.message, "id", None)
+        if message_id and message_id in _processed_message_ids:
+            log.info("Skip duplicate link message_id: %s", message_id)
+        else:
+            if message_id:
+                if len(_processed_message_ids) >= _MAX_PROCESSED_IDS:
+                    _processed_message_ids.clear()
+                _processed_message_ids.add(message_id)
+            source_folder = _user_source.get(user_id, "other")
+            _backup_links_to_nextcloud(text, source_folder, user_id)
 
 
 # Register handler for media messages (SDK 2.x uses WebhookHandler.add)

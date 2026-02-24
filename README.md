@@ -8,10 +8,11 @@ LINE Bot that receives image / video / audio / file messages, downloads the cont
 
 - **Webhook** at `POST /callback` for LINE Platform
 - Handles **ImageMessage**, **VideoMessage**, **AudioMessage**, **FileMessage**
+- **Link backup**: text messages that contain `http://` or `https://` are saved as `.txt` files under `LINE_Backup/{source}/YYYY-MM-DD/link/`
 - Downloads binary content via LINE Messaging API
-- Uploads to Nextcloud under **`LINE_Backup/YYYY-MM-DD/`** (filename includes time)
+- Uploads to Nextcloud under **`LINE_Backup/{source}/YYYY-MM-DD/{type}/`** where **type** is: `image`, `video`, `link`, or `files` (photos in `image/`, videos in `video/`, links in `link/`, audio + PDF/PPTX/etc. in `files/`). **Files** (PDF, PPTX, etc.) keep the original filename only (e.g. `Report_Q1.pptx`); the date is already in the path `.../YYYY-MM-DD/files/`. Images/videos keep the short prefix (`img_*`, `vid_*`).
 - Optional replies: set `ENABLE_LINE_REPLIES=true` to get "收到檔案..." and "✅ 已備份" (uses 2 sends per file); default `false` = silent
-- **Source folders**: set `SOURCE_MAP=1:Amigo,2:Ben,3:Mom` in `.env`. Send **"1"** then forward media → saved under `LINE_Backup/Amigo/date/`. Send **"0"** or **"other"** → back to `other`. No number before media → `other`
+- **Source folders**: set `SOURCE_MAP=1:Amigo,2:Ben,3:Mom` in `.env`. Send **"1"** then forward media → saved under `LINE_Backup/Amigo/YYYY-MM-DD/{type}/`. Send **"0"** or **"other"** → back to `other`. No number before media → `other`
 
 ## Prerequisites
 
@@ -103,7 +104,7 @@ docker compose up -d
 ## API
 
 - `GET /` – Service info
-- `GET /health` – **Health check**: 200 if Nextcloud reachable (PROPFIND), else 503
+- `GET /health` – **Health check**: 200 if Nextcloud reachable (PROPFIND), else 503. Docker Compose uses this for container health.
 - `GET /debug-webdav` – Test Nextcloud WebDAV (create base folder)
 - `POST /callback` – LINE Webhook (signature-verified)
 
@@ -118,6 +119,7 @@ docker compose up -d
 - **重啟後**：若設了 `SOURCE_STATE_FILE`（如 `data/source_state.json`），編號會寫入檔案，重啟後不用再傳編號。不設則只存在記憶體。
 - **看日誌**：成功會打 `Backup ok: LINE_Backup/...`，失敗會打 `Backup failed` 與錯誤堆疊，方便除錯（`docker compose logs -f` 或 uvicorn 終端）。
 - **多台機器**：若同一 Bot 跑多個 instance，來源編號不會共用，建議只跑一個 instance。
+- **重複事件**：LINE 重送同一則 webhook 時，bot 會依 `message_id` 略過已處理過的訊息，避免同一檔案備份兩次。
 
 ## Push to GitHub
 

@@ -1,0 +1,29 @@
+# Secrets and local config
+.env
+.env.local
+*.pem
+# Persisted state (optional, per deployment)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Logs and OS
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

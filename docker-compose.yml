@@ -1,0 +1,21 @@
+services:
+  line-nextcloud-bot:
+    build: .
+    container_name: line-nextcloud-bot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Taipei
+      - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET}
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
+      - NEXTCLOUD_URL=${NEXTCLOUD_URL}
+      - NEXTCLOUD_USER=${NEXTCLOUD_USER}
+      - NEXTCLOUD_PASSWORD=${NEXTCLOUD_PASSWORD}
+      - NEXTCLOUD_BASE_PATH=${NEXTCLOUD_BASE_PATH:-LINE_Backup}
+      - ENABLE_LINE_REPLIES=${ENABLE_LINE_REPLIES:-false}
+      - SOURCE_MAP=${SOURCE_MAP:-}
+      - SOURCE_STATE_FILE=${SOURCE_STATE_FILE:-}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-0}
+    env_file:
+      - .env

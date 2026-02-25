@@ -1,23 +1,30 @@
 # LINE to Nextcloud Backup Bot
 
-LINE Bot that receives image / video / audio / file messages, downloads the content from LINE, and uploads it to your Nextcloud via WebDAV. Use it to avoid losing media when LINE content expires.
+A LINE bot that backs up media and links to your Nextcloud. It receives images, videos, audio, files, and text messages containing URLs, downloads content from LINE (before it expires), and uploads everything to your Nextcloud via WebDAV. All backups are organized by source, date, and type.
 
-**Repo name suggestion:** `line-nextcloud-backup` or `line-backup-bot`
+## Project overview
+
+- **Purpose**: Persist LINE media and important links to your own Nextcloud so you don’t lose them when LINE content expires.
+- **Flow**: LINE → webhook → bot downloads (or reads text) → uploads to Nextcloud → optional reply to user. No media is kept on the server; only a small optional state file (e.g. source selection) is stored locally.
+- **Stack**: Python 3.11, FastAPI, LINE Bot SDK, `requests` for WebDAV. Runs in Docker or locally with uvicorn.
 
 ## Features
 
-- **Webhook** at `POST /callback` for LINE Platform
-- Handles **ImageMessage**, **VideoMessage**, **AudioMessage**, **FileMessage**
-- **Link backup**: text messages that contain `http://` or `https://` are saved as `.txt` files under `LINE_Backup/{source}/YYYY-MM-DD/link/`
-- Downloads binary content via LINE Messaging API
-- Uploads to Nextcloud under **`LINE_Backup/{source}/YYYY-MM-DD/{type}/`** where **type** is: `image`, `video`, `link`, or `files` (photos in `image/`, videos in `video/`, links in `link/`, audio + PDF/PPTX/etc. in `files/`). **Files** (PDF, PPTX, etc.) keep the original filename only (e.g. `Report_Q1.pptx`); the date is already in the path `.../YYYY-MM-DD/files/`. Images/videos keep the short prefix (`img_*`, `vid_*`).
-- Optional replies: set `ENABLE_LINE_REPLIES=true` to get "收到檔案..." and "✅ 已備份" (uses 2 sends per file); default `false` = silent
-- **Source folders**: set `SOURCE_MAP=1:Amigo,2:Ben,3:Mom` in `.env`. Send **"1"** then forward media → saved under `LINE_Backup/Amigo/YYYY-MM-DD/{type}/`. Send **"0"** or **"other"** → back to `other`. No number before media → `other`
+- **Webhook** at `POST /callback` for the LINE platform.
+- **Media**: Handles **ImageMessage**, **VideoMessage**, **AudioMessage**, **FileMessage** — downloads binary via LINE Messaging API and uploads to Nextcloud.
+- **Links**: Text messages that contain `http://` or `https://` are saved as `.txt` files (full message body) under `LINE_Backup/{source}/YYYY-MM-DD/link/`.
+- **Folder layout**: Uploads go under **`LINE_Backup/{source}/YYYY-MM-DD/{type}/`** where:
+  - `{source}` = e.g. `Amigo`, `Ben`, `other` (set by sending "1", "2", or "0"/"other" before media).
+  - `{type}` = `image`, `video`, `link`, or `files` (images in `image/`, videos in `video/`, links in `link/`, audio and documents in `files/`).
+- **Filenames**: Images/videos use a short prefix and timestamp (e.g. `img_20250224_143052_123.jpg`). **Files** (PDF, PPTX, etc.) keep the **original filename only** (e.g. `Report_Q1.pptx`); the date is already in the path.
+- **Source folders**: Configure `SOURCE_MAP=1:Amigo,2:Ben,3:Mom` in `.env`. Send **"1"** then forward media → saved under `LINE_Backup/Amigo/...`. Send **"0"** or **"other"** to use `other`. Optional persistence via `SOURCE_STATE_FILE` so the chosen source survives restarts.
+- **Optional replies**: Set `ENABLE_LINE_REPLIES=true` to get a reply and a push message per backup (uses 2 sends per item). Default `false` = silent, to save LINE send quota.
+- **Reliability**: Retries Nextcloud upload up to 3 times on failure; skips duplicate webhook events by `message_id`; streams large files via a temp file to limit memory use; container runs as non-root and includes a health check.
 
 ## Prerequisites
 
-- LINE Developers: create a **Messaging API Channel** and get **Channel Secret** and **Channel Access Token**
-- Nextcloud: create an **App Password** (Settings → Security → App passwords) for this bot; do not use your main login password
+- **LINE**: Create a [Messaging API Channel](https://developers.line.biz/) and obtain **Channel Secret** and **Channel Access Token**.
+- **Nextcloud**: Create an **App Password** (Settings → Security → App passwords) for this bot; do not use your main account password.
 
 ## Setup
 
@@ -29,14 +36,14 @@ LINE Bot that receives image / video / audio / file messages, downloads the cont
 
 2. **Edit `.env`** and set:
 
-   - `LINE_CHANNEL_SECRET` – from LINE Developers Console (Channel → Basic settings)
-   - `LINE_CHANNEL_ACCESS_TOKEN` – from LINE Developers Console (Messaging API tab)
-   - `NEXTCLOUD_URL` – e.g. `https://your-nextcloud.example.com`
-   - `NEXTCLOUD_USER` – your Nextcloud username
-   - `NEXTCLOUD_PASSWORD` – **App Password** from Nextcloud (Settings → Security → App passwords)
-   - `NEXTCLOUD_BASE_PATH` – optional, default `LINE_Backup` (folder under your WebDAV root)
+   - `LINE_CHANNEL_SECRET` — from LINE Developers Console (Channel → Basic settings).
+   - `LINE_CHANNEL_ACCESS_TOKEN` — from LINE Developers Console (Messaging API tab).
+   - `NEXTCLOUD_URL` — e.g. `https://your-nextcloud.example.com` (base URL only).
+   - `NEXTCLOUD_USER` — your Nextcloud username.
+   - `NEXTCLOUD_PASSWORD` — **App Password** from Nextcloud (Settings → Security → App passwords).
+   - `NEXTCLOUD_BASE_PATH` — optional; default `LINE_Backup` (folder under your WebDAV root).
 
-3. **Install dependencies and run** (local):
+3. **Run locally** (optional):
 
    ```bash
    python3 -m venv .venv
@@ -45,40 +52,42 @@ LINE Bot that receives image / video / audio / file messages, downloads the cont
    uvicorn main:app --host 0.0.0.0 --port 8000
    ```
 
-4. **LINE Webhook URL**: set your Webhook URL in LINE Developers Console (Messaging API) to:
+4. **Set LINE Webhook URL** in LINE Developers Console (Messaging API) to:
 
    - `https://your-public-host/callback`  
-   (must be HTTPS; use ngrok or a reverse proxy for local testing)
+   (must be HTTPS; use ngrok or a reverse proxy for local testing).
 
-## Docker (Proxmox / TrueNAS)
+## Docker
 
-專案已可完整以 Docker 部署，時區為 `Asia/Taipei`，埠號 8000。
+The project can be run fully with Docker. Timezone is `Asia/Taipei`; port 8000.
 
-**建置並啟動（建議）：**
+**Build and start (recommended):**
 
 ```bash
-cd /home/ben/line-nextcloud-bot
-# 請先設定好 .env（或依下方環境變數）
-docker compose up -d
+cd /path/to/line-nextcloud-bot
+# Ensure .env is configured (see Environment variables below)
+docker compose up -d --build
 ```
 
-**僅建置映像：**
+**Build only:**
 
 ```bash
 docker compose build
-# 或
+# or
 docker build -t line-nextcloud-bot .
 ```
 
-**僅啟動（已建置過）：**
+**Start only (after build):**
 
 ```bash
 docker compose up -d
 ```
 
-容器內服務監聽 `0.0.0.0:8000`。`docker-compose.yml` 會讀取同目錄下的 `.env`，並設定 `TZ=Asia/Taipei` 與 LINE / Nextcloud 相關環境變數。
+The app listens on `0.0.0.0:8000` inside the container. `docker-compose.yml` reads `.env` from the project directory and passes LINE/Nextcloud variables. The image runs as a **non-root** user. If you use the volume `./data` for `SOURCE_STATE_FILE`, ensure the host directory is writable, e.g.:
 
-容器以非 root 使用者執行。若使用 volume `./data` 存放來源狀態，請確保主機目錄可寫，例如：`mkdir -p data && chown 1000:1000 data`。
+```bash
+mkdir -p data && chown 1000:1000 data
+```
 
 ## Environment variables
 
@@ -89,37 +98,38 @@ docker compose up -d
 | `NEXTCLOUD_URL` | Nextcloud base URL (e.g. `https://nc.example.com`) |
 | `NEXTCLOUD_USER` | Nextcloud username |
 | `NEXTCLOUD_PASSWORD` | Nextcloud App Password |
-| `NEXTCLOUD_BASE_PATH` | Base folder name under WebDAV (default: `LINE_Backup`) |
-| `ENABLE_LINE_REPLIES` | `true` = reply + push per file (debug); `false` = silent (default) |
-| `SOURCE_MAP` | `1:Amigo,2:Ben,3:Mom` = send "1" then media → Amigo folder; "0"/"other" → other |
-| `SOURCE_STATE_FILE` | Optional. e.g. `data/source_state.json` = persist source so restart keeps last number; empty = off |
+| `NEXTCLOUD_BASE_PATH` | Base folder under WebDAV (default: `LINE_Backup`) |
+| `ENABLE_LINE_REPLIES` | `true` = reply + push per backup (debug); `false` = silent (default) |
+| `SOURCE_MAP` | e.g. `1:Amigo,2:Ben,3:Mom` — send "1" then media → Amigo folder; "0"/"other" → other |
+| `SOURCE_STATE_FILE` | Optional. e.g. `data/source_state.json` to persist source across restarts; empty = off |
 | `MAX_FILE_SIZE_MB` | Optional. Max file size in MB (0 = no limit). Larger files are skipped |
 
-## LINE Messaging API 用量
+## LINE Messaging API usage
 
-- **接收**（Webhook、Get content 下載）：不計入發送配額。
-- **發送**：僅在 `ENABLE_LINE_REPLIES=true` 時會發送（每則備份 2 則：reply + push）。預設 `false` 不發送，不會消耗發送配額。
-- 除錯時可設 `ENABLE_LINE_REPLIES=true`，確認後改回 `false` 即可。
+- **Receive** (webhook, get content): Does not count against send quota.
+- **Send**: Only when `ENABLE_LINE_REPLIES=true` (2 messages per backup: reply + push). Default `false` avoids using send quota. Turn on for debugging, then set back to `false`.
 
-## API
+## API endpoints
 
-- `GET /` – Service info
-- `GET /health` – **Health check**: 200 if Nextcloud reachable (PROPFIND), else 503. Docker Compose uses this for container health.
-- `GET /debug-webdav` – Test Nextcloud WebDAV (create base folder)
-- `POST /callback` – LINE Webhook (signature-verified)
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Service info |
+| `GET` | `/health` | Health check: 200 if Nextcloud is reachable (PROPFIND), else 503. Used by Docker Compose for container health. |
+| `GET` | `/debug-webdav` | Test Nextcloud WebDAV (creates base folder) |
+| `POST` | `/callback` | LINE webhook (signature-verified) |
 
-## 資料存放說明（不會堆在本地）
+## Data and storage
 
-- **媒體檔案**：不會長期留在本機。流程是「LINE 下載 → 暫存檔（僅傳輸中）→ 上傳 Nextcloud → 立刻刪除暫存檔」，所以**只有 Nextcloud 上有備份**，本地不會累積媒體。
-- **本地僅存的**：若設定 `SOURCE_STATE_FILE`（例如 `data/source_state.json`），只會有一個小 JSON 檔記錄「使用者編號 → 來源資料夾」，體積很小，**不需要定期清理**。
-- **暫存檔**：下載／上傳過程會用系統 temp 目錄的暫存檔以節省記憶體，上傳成功或失敗後都會刪除，不會越積越大。
+- **Media**: Not stored on the server. Flow is: LINE → temp file (during transfer) → upload to Nextcloud → temp file deleted. Only Nextcloud holds the backup; nothing accumulates locally.
+- **Local state**: If `SOURCE_STATE_FILE` is set (e.g. `data/source_state.json`), a small JSON file stores user → source folder mapping. No need to clean it periodically.
+- **Temp files**: Download/upload uses the system temp directory; files are deleted after success or failure, so they do not grow over time.
 
-## Tips / 注意
+## Tips
 
-- **重啟後**：若設了 `SOURCE_STATE_FILE`（如 `data/source_state.json`），編號會寫入檔案，重啟後不用再傳編號。不設則只存在記憶體。
-- **看日誌**：成功會打 `Backup ok: LINE_Backup/...`，失敗會打 `Backup failed` 與錯誤堆疊，方便除錯（`docker compose logs -f` 或 uvicorn 終端）。
-- **多台機器**：若同一 Bot 跑多個 instance，來源編號不會共用，建議只跑一個 instance。
-- **重複事件**：LINE 重送同一則 webhook 時，bot 會依 `message_id` 略過已處理過的訊息，避免同一檔案備份兩次。
+- **After restart**: With `SOURCE_STATE_FILE` set, the last source number is restored; without it, source is in-memory only.
+- **Logs**: Success lines show `Backup ok: LINE_Backup/...`; failures show `Backup failed` and a stack trace. Use `docker compose logs -f` or the uvicorn console.
+- **Multiple instances**: If you run more than one instance for the same bot, source state is not shared; prefer a single instance.
+- **Duplicate events**: When LINE resends the same webhook, the bot skips already-processed messages by `message_id` so the same file or link is not backed up twice.
 
 ## Push to GitHub
 
@@ -136,7 +146,7 @@ git remote add origin https://github.com/YOUR_USERNAME/line-nextcloud-backup.git
 git push -u origin main
 ```
 
-3. If the repo already exists and you already have commits, just add the remote and push.
+3. If the repo already exists, add the remote and push as needed.
 
 ## License
 

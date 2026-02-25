@@ -2,6 +2,7 @@
 LINE Bot: File transfer & archive relay to Nextcloud.
 Receives image/video/audio/file messages, downloads content, uploads to Nextcloud via WebDAV.
 """
+import hmac
 import json
 import logging
 import os
@@ -19,8 +20,8 @@ log = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Taipei")
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, HTTPException, Depends, Form
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import (
     MessageEvent,
@@ -52,6 +53,28 @@ ENABLE_LINE_REPLIES = os.getenv("ENABLE_LINE_REPLIES", "false").strip().lower() 
 SOURCE_STATE_FILE = (os.getenv("SOURCE_STATE_FILE", "data/source_state.json") or "").strip()
 # Optional: max file size in MB (0 = no limit). Larger files are skipped.
 MAX_FILE_SIZE_MB = float(os.getenv("MAX_FILE_SIZE_MB", "0") or "0")
+# Optional: file to store source map (number -> folder). If set and file exists, overrides SOURCE_MAP env. Editable via /admin.
+SOURCE_MAP_FILE = (os.getenv("SOURCE_MAP_FILE", "data/source_map.json") or "").strip()
+# Optional: password to access /admin (source mapping UI). Empty = no auth.
+ADMIN_PASSWORD = (os.getenv("ADMIN_PASSWORD", "") or "").strip()
+# Optional: GitHub repo URL for footer link on home page (e.g. https://github.com/user/repo).
+GITHUB_REPO = (os.getenv("GITHUB_REPO", "") or "").strip()
+
+ADMIN_COOKIE_NAME = "admin_session"
+
+
+def _admin_session_token() -> str:
+    """Session cookie value when admin password is set (HMAC so we don't store password)."""
+    if not ADMIN_PASSWORD:
+        return ""
+    return hmac.new(ADMIN_PASSWORD.encode(), b"line-backup-admin", "sha256").hexdigest()
+
+
+def _admin_authenticated(request: Request) -> bool:
+    """True if request has valid admin session cookie."""
+    if not ADMIN_PASSWORD:
+        return True
+    return request.cookies.get(ADMIN_COOKIE_NAME) == _admin_session_token()
 
 
 def _safe_folder_name(name: str) -> str:
@@ -69,15 +92,33 @@ def _safe_file_stem(name: str, max_len: int = 80) -> str:
     return (s[:max_len] or "file").strip("._")
 
 
-# Source list: number -> folder name. e.g. 1:Amigo,2:Ben,3:Mom . No number / unknown = save under "other"
+# Source list: number -> folder name. Loaded from SOURCE_MAP_FILE if present, else from SOURCE_MAP env.
 SOURCE_MAP: dict[str, str] = {}
-for part in (os.getenv("SOURCE_MAP", "") or "").strip().split(","):
-    part = part.strip()
-    if ":" in part:
-        k, v = part.split(":", 1)
-        k, v = k.strip(), v.strip()
-        if k and v:
-            SOURCE_MAP[k] = _safe_folder_name(v)
+
+
+def _load_source_map() -> None:
+    """Load SOURCE_MAP from file (if SOURCE_MAP_FILE set and exists) or from SOURCE_MAP env."""
+    SOURCE_MAP.clear()
+    if SOURCE_MAP_FILE:
+        path = Path(SOURCE_MAP_FILE)
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    for k, v in data.items():
+                        if k and v and isinstance(k, str) and isinstance(v, str):
+                            SOURCE_MAP[k.strip()] = _safe_folder_name(v.strip())
+                    log.info("Loaded source map from %s (%d entries)", SOURCE_MAP_FILE, len(SOURCE_MAP))
+                    return
+            except Exception as e:
+                log.warning("Could not load source map from %s: %s", SOURCE_MAP_FILE, e)
+    for part in (os.getenv("SOURCE_MAP", "") or "").strip().split(","):
+        part = part.strip()
+        if ":" in part:
+            k, v = part.split(":", 1)
+            k, v = k.strip(), v.strip()
+            if k and v:
+                SOURCE_MAP[k] = _safe_folder_name(v)
 
 # Per-user last chosen source: user_id -> folder name (e.g. Amigo). Default "other". Load from file if SOURCE_STATE_FILE set.
 _user_source: dict[str, str] = {}
@@ -107,6 +148,8 @@ def _save_source_state() -> None:
     except Exception as e:
         log.warning("Could not save source state to %s: %s", SOURCE_STATE_FILE, e)
 
+
+_load_source_map()
 
 _load_source_state()
 
@@ -203,9 +246,42 @@ def upload_to_nextcloud(
     raise last_err
 
 
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
+def _render_template(name: str, **kwargs: str) -> str:
+    """Load HTML template and substitute {{ key }} with values from kwargs."""
+    path = _TEMPLATES_DIR / name
+    if not path.exists():
+        raise FileNotFoundError(f"Template {name} not found at {path}")
+    t = path.read_text(encoding="utf-8")
+    for k, v in kwargs.items():
+        t = t.replace("{{ " + k + " }}", (v or ""))
+    return t
+
+
+def _html_esc(s: str) -> str:
+    """Escape for HTML text/attributes."""
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _landing_html() -> str:
+    """Home page: quick links (Manage source map, Open Nextcloud), footer with GitHub."""
+    nextcloud_link = ""
+    if NEXTCLOUD_URL:
+        nextcloud_link = f'<a href="{_html_esc(NEXTCLOUD_URL)}" class="btn btn--primary" target="_blank" rel="noopener">Open Nextcloud ↗</a>'
+    github_foot = ""
+    if GITHUB_REPO:
+        github_foot = f' · <a href="{_html_esc(GITHUB_REPO)}" target="_blank" rel="noopener">GitHub</a>'
+    return _render_template("landing.html", nextcloud_link=nextcloud_link, github_foot=github_foot)
+
+
 @app.get("/")
-def root():
-    return {"service": "LINE to Nextcloud Backup Bot", "health": "ok"}
+def root(request: Request):
+    """Landing page (HTML) or JSON if Accept: application/json."""
+    if "application/json" in (request.headers.get("accept") or ""):
+        return {"service": "LINE to Nextcloud Backup Bot", "health": "ok"}
+    return HTMLResponse(content=_landing_html())
 
 
 @app.get("/health")
@@ -223,6 +299,110 @@ def health():
         status_code=503,
         content={"status": "degraded", "nextcloud": "error"},
     )
+
+
+def _admin_html(message: str = "", is_error: bool = False) -> str:
+    """Admin page: table of number → folder, synced to hidden textarea on submit."""
+    def _sort_key(item: tuple[str, str]):
+        k = item[0]
+        return (0, int(k)) if k.isdigit() else (1, k)
+    rows_data = sorted(SOURCE_MAP.items(), key=_sort_key) if SOURCE_MAP else [("1", "Amigo"), ("2", "Ben")]
+    rows_json = json.dumps([[k, v] for k, v in rows_data])
+    msg_html = ""
+    if message:
+        cls = "msg msg--error" if is_error else "msg msg--ok"
+        msg_html = f'<p class="{cls}">{message}</p>'
+    auth_warn = ""
+    if not ADMIN_PASSWORD:
+        auth_warn = '<p class="msg msg--warn">Admin password not set. Set <code>ADMIN_PASSWORD</code> in .env to protect this page.</p>'
+    logout_note = ""
+    logout_link = ""
+    if ADMIN_PASSWORD:
+        logout_link = '<span class="logout"><a href="/admin/logout">Log out</a></span>'
+    return _render_template(
+        "admin.html",
+        logout_note=logout_note,
+        auth_warn=auth_warn,
+        msg_html=msg_html,
+        rows_json=rows_json,
+        logout_link=logout_link,
+    )
+
+
+@app.get("/admin/logout")
+def admin_logout():
+    """Clear admin session cookie and redirect to home."""
+    r = RedirectResponse(url="/", status_code=302)
+    r.delete_cookie(ADMIN_COOKIE_NAME)
+    return r
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_get(request: Request):
+    """Show login form. If already logged in, redirect to /admin."""
+    if _admin_authenticated(request):
+        return RedirectResponse(url="/admin", status_code=302)
+    return HTMLResponse(content=_render_template("login.html", error_html=""))
+
+
+@app.post("/admin/login", response_class=HTMLResponse)
+def admin_login_post(request: Request, password: str = Form("")):
+    """Check password; set session cookie and redirect to /admin, or show form with error."""
+    if not ADMIN_PASSWORD:
+        return RedirectResponse(url="/admin", status_code=302)
+    if password and password == ADMIN_PASSWORD:
+        r = RedirectResponse(url="/admin", status_code=302)
+        r.set_cookie(
+            ADMIN_COOKIE_NAME,
+            _admin_session_token(),
+            max_age=7 * 86400,
+            httponly=True,
+            samesite="lax",
+        )
+        return r
+    err = '<p class="msg msg--error">Wrong password. Try again.</p>'
+    return HTMLResponse(content=_render_template("login.html", error_html=err))
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_get(request: Request):
+    """View and edit source map. Redirect to login if ADMIN_PASSWORD set and not authenticated."""
+    if not _admin_authenticated(request):
+        return RedirectResponse(url="/admin/login", status_code=302)
+    return HTMLResponse(content=_admin_html())
+
+
+@app.post("/admin", response_class=HTMLResponse)
+def admin_post(
+    request: Request,
+    mapping: str = Form(""),
+):
+    """Save source map from form. Redirect to login if not authenticated."""
+    if not _admin_authenticated(request):
+        return RedirectResponse(url="/admin/login", status_code=302)
+    if not SOURCE_MAP_FILE:
+        return HTMLResponse(content=_admin_html("SOURCE_MAP_FILE not set; cannot save."))
+    data: dict[str, str] = {}
+    for line in mapping.strip().splitlines():
+        line = line.strip()
+        if ":" in line:
+            k, v = line.split(":", 1)
+            k, v = k.strip(), v.strip()
+            if k and v:
+                data[k] = _safe_folder_name(v)
+    try:
+        path = Path(SOURCE_MAP_FILE)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        _load_source_map()
+        return HTMLResponse(content=_admin_html("Saved. Mapping is active."))
+    except PermissionError as e:
+        log.warning("Permission denied saving source map: %s", e)
+        hint = "On the server run: sudo chown -R $(id -u):$(id -g) data  then restart the container (docker compose restart)."
+        return HTMLResponse(content=_admin_html(f"Cannot save: permission denied. {hint}", is_error=True))
+    except Exception as e:
+        log.exception("Failed to save source map")
+        return HTMLResponse(content=_admin_html(f"Error: {e}", is_error=True))
 
 
 @app.get("/debug-webdav")

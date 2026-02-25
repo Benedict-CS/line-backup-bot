@@ -7,9 +7,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir 'aiohttp>=3.9' --only-binary aiohttp && \
     pip install --no-cache-dir line-bot-sdk==2.4.3 --no-deps && \
-    pip install --no-cache-dir fastapi==0.109.2 uvicorn==0.27.1 python-dotenv==1.0.1 requests future
+    pip install --no-cache-dir fastapi==0.109.2 uvicorn==0.27.1 python-dotenv==1.0.1 requests python-multipart future
 
 COPY main.py .
+COPY templates/ templates/
 
 # Run as non-root (security)
 RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app

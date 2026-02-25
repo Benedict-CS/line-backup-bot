@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LINE to Nextcloud Backup</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231a73e8'%3E%3Cpath d='M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l6.9 3.45L12 11.09 5.1 7.63 12 4.18zM4 8.82l7 3.5v7.36l-7-3.5V8.82zm9 10.86v-7.36l7-3.5v7.36l-7 3.5z'/%3E%3C/svg%3E" type="image/svg+xml">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; min-height: 100vh; background: linear-gradient(160deg, #f0f4ff 0%, #e8eef8 100%); color: #1a1a1a; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.06); max-width: 560px; width: 100%; padding: 2.5rem; }
+    .logo { font-size: 1.75rem; font-weight: 700; color: #1a1a2e; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+    .tagline { color: #5f6368; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem; }
+    .section { margin-bottom: 1.5rem; }
+    .section h2 { font-size: 1rem; font-weight: 600; color: #333; margin: 0 0 0.75rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-top: 0; }
+    .btn { padding: 0.6rem 1.2rem; font-size: 0.9rem; font-weight: 500; border-radius: 10px; text-decoration: none; display: inline-block; transition: background .15s; border: none; cursor: pointer; font-family: inherit; }
+    .btn--primary { background: #1a73e8; color: #fff; }
+    .btn--primary:hover { background: #1557b0; }
+    .btn--secondary { background: #f0f2f5; color: #3c4043; }
+    .btn--secondary:hover { background: #e8eaed; }
+    .steps { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee; }
+    .steps h3 { font-size: 0.9rem; font-weight: 600; color: #333; margin: 0 0 0.75rem; }
+    .steps ol { margin: 0; padding-left: 1.25rem; color: #5f6368; font-size: 0.9rem; line-height: 1.8; }
+    .foot { margin-top: 2rem; text-align: center; font-size: 0.8rem; color: #9aa0a6; }
+    .foot a { color: #5f6368; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">LINE → Nextcloud Backup</div>
+    <p class="tagline">Send a number in LINE, then media or links — they are saved to your Nextcloud by folder and date.</p>
+    <div class="section">
+      <h2>Quick links</h2>
+      <p style="font-size:0.85rem;color:#5f6368;margin:0 0 0.75rem;">Manage number → folder mapping, or open your Nextcloud.</p>
+      <div class="actions">
+        <a href="/admin" class="btn btn--secondary">Manage source map →</a>
+        {{ nextcloud_link }}
+      </div>
+    </div>
+    <div class="steps">
+      <h3>How it works</h3>
+      <ol>
+        <li>In LINE, send a number (e.g. 1) to choose a folder, then send photos, videos, files or links.</li>
+        <li>They are saved to Nextcloud under LINE_Backup / folder / date / type (image, video, link, files).</li>
+        <li>Click "Open Nextcloud" to see your files; click "Manage source map" to edit number → folder (password required).</li>
+      </ol>
+    </div>
+    <p class="foot">LINE Bot + Nextcloud · <a href="/health" target="_blank">API status</a>{{ github_foot }}</p>
+  </div>
+</body>
+</html>

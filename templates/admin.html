@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edit source map — LINE Backup Bot</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231a73e8'%3E%3Cpath d='M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l6.9 3.45L12 11.09 5.1 7.63 12 4.18zM4 8.82l7 3.5v7.36l-7-3.5V8.82zm9 10.86v-7.36l7-3.5v7.36l-7 3.5z'/%3E%3C/svg%3E" type="image/svg+xml">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; min-height: 100vh; background: #f0f2f5; color: #1a1a1a; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); max-width: 560px; width: 100%; padding: 2rem; }
+    .nav-top { margin-bottom: 1rem; font-size: 0.9rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .nav-top a { color: #1a73e8; text-decoration: none; }
+    .nav-top a:hover { text-decoration: underline; }
+    .nav-top .logout { color: #5f6368; margin-left: auto; }
+    .nav-note { font-size: 0.8rem; color: #5f6368; margin: 0.5rem 0 0; }
+    h1 { margin: 0 0 .5rem; font-size: 1.5rem; font-weight: 600; color: #111; }
+    .sub { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.5; }
+    .msg { padding: .75rem 1rem; border-radius: 8px; font-size: 0.9rem; margin-bottom: 1rem; }
+    .msg--ok { background: #e6f4ea; color: #137333; }
+    .msg--error { background: #fce8e6; color: #c5221f; }
+    .msg--warn { background: #fef7e0; color: #b06000; }
+    .tbl-wrap { overflow-x: auto; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: .5rem .75rem; text-align: left; border-bottom: 1px solid #eee; }
+    th { font-weight: 600; color: #333; background: #f8f9fa; }
+    th { width: 28%; }
+    th:last-child { width: 80px; }
+    td input { width: 100%; padding: .4rem .5rem; border: 1px solid #dadce0; border-radius: 6px; font-size: 0.9rem; }
+    td input:focus { outline: none; border-color: #1a73e8; }
+    .btn-row { padding: .25rem 0; }
+    .btn--sm { padding: .25rem .5rem; font-size: 0.8rem; background: #f0f2f5; color: #5f6368; border: none; border-radius: 6px; cursor: pointer; }
+    .btn--sm:hover { background: #e8eaed; color: #c5221f; }
+    .actions { margin-top: 1rem; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .btn { padding: .5rem 1.25rem; font-size: 0.9rem; font-weight: 500; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; }
+    .btn--primary { background: #1a73e8; color: #fff; }
+    .btn--primary:hover { background: #1557b0; }
+    .btn--secondary { background: #f0f2f5; color: #3c4043; }
+    .btn--secondary:hover { background: #e8eaed; }
+    .btn--outline { background: transparent; color: #1a73e8; border: 1px solid #dadce0; }
+    .btn--outline:hover { background: #f0f7ff; }
+    .help { font-size: 0.85rem; color: #5f6368; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; }
+    .help code { background: #f0f2f5; padding: .15em .4em; border-radius: 4px; font-size: 0.85em; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <p class="nav-top"><a href="/">← Back to home</a> {{ logout_link }}</p>
+    <h1>Edit source map</h1>
+    <p class="sub">In LINE, send a number then media is saved under that folder. Use "0" or "other" for the default folder.</p>
+    {{ logout_note }}
+    {{ auth_warn }}
+    {{ msg_html }}
+    <form method="post" action="/admin" id="adminForm">
+      <input type="hidden" name="mapping" id="mapping" value="">
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>Number</th><th>Folder name</th><th></th></tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <button type="button" class="btn btn--outline" id="addRow">+ Add row</button>
+      <div class="actions">
+        <button type="submit" class="btn btn--primary">Save</button>
+        <a href="/" class="btn btn--secondary">Back to home</a>
+      </div>
+    </form>
+    <p class="help">Example: number <code>1</code> → folder <code>Amigo</code> means sending "1" in LINE saves to Amigo.</p>
+  </div>
+  <script type="application/json" id="rowsData">{{ rows_json }}</script>
+  <script>
+    const rows = JSON.parse(document.getElementById('rowsData').textContent);
+    const tbody = document.getElementById('tableBody');
+    const mappingInput = document.getElementById('mapping');
+    function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function addRow(num, folder) {
+      num = num || ''; folder = folder || '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td><input type="text" class="row-num" placeholder="e.g. 1" value="' + esc(num) + '"></td><td><input type="text" class="row-folder" placeholder="e.g. Amigo" value="' + esc(folder) + '"></td><td class="btn-row"><button type="button" class="btn--sm remove-row">Remove</button></td>';
+      tr.querySelector('.remove-row').onclick = function() { tr.remove(); };
+      tbody.appendChild(tr);
+    }
+    rows.forEach(function(r) { addRow(r[0], r[1]); });
+    document.getElementById('addRow').onclick = function() { addRow('', ''); };
+    document.getElementById('adminForm').onsubmit = function() {
+      var lines = [];
+      tbody.querySelectorAll('tr').forEach(function(tr) {
+        var num = (tr.querySelector('.row-num').value || '').trim();
+        var folder = (tr.querySelector('.row-folder').value || '').trim();
+        if (num && folder) lines.push(num + ': ' + folder);
+      });
+      mappingInput.value = lines.join('\n');
+    };
+  </script>
+</body>
+</html>

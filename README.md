@@ -83,11 +83,14 @@ docker build -t line-nextcloud-bot .
 docker compose up -d
 ```
 
-The app listens on `0.0.0.0:8000` inside the container. `docker-compose.yml` reads `.env` from the project directory and passes LINE/Nextcloud variables. The image runs as a **non-root** user. If you use the volume `./data` for `SOURCE_STATE_FILE`, ensure the host directory is writable, e.g.:
+The app listens on `0.0.0.0:8000` inside the container. `docker-compose.yml` reads `.env` and runs the container as the **host user** (via `UID`/`GID`) so that `./data` is writable. **To fix "permission denied" when saving the source map:**
 
-```bash
-mkdir -p data && chown 1000:1000 data
-```
+1. On the host, run: `id -u` and `id -g` (e.g. `1000` and `1000`).
+2. Add to `.env`: `UID=1000` and `GID=1000` (use your actual numbers).
+3. Ensure the data directory exists and is yours: `mkdir -p data`
+4. Restart: `docker compose up -d --build`
+
+Then the container runs as your user and can write to `./data`.
 
 ## Environment variables
 
@@ -100,9 +103,12 @@ mkdir -p data && chown 1000:1000 data
 | `NEXTCLOUD_PASSWORD` | Nextcloud App Password |
 | `NEXTCLOUD_BASE_PATH` | Base folder under WebDAV (default: `LINE_Backup`) |
 | `ENABLE_LINE_REPLIES` | `true` = reply + push per backup (debug); `false` = silent (default) |
-| `SOURCE_MAP` | e.g. `1:Amigo,2:Ben,3:Mom` — send "1" then media → Amigo folder; "0"/"other" → other |
+| `SOURCE_MAP` | e.g. `1:Amigo,2:Ben,3:Mom` — send "1" then media → Amigo folder; "0"/"other" → other (used if SOURCE_MAP_FILE missing) |
+| `SOURCE_MAP_FILE` | Optional. e.g. `data/source_map.json` — if file exists, overrides SOURCE_MAP; editable in browser at **/admin** |
 | `SOURCE_STATE_FILE` | Optional. e.g. `data/source_state.json` to persist source across restarts; empty = off |
 | `MAX_FILE_SIZE_MB` | Optional. Max file size in MB (0 = no limit). Larger files are skipped |
+| `ADMIN_PASSWORD` | Optional. Password for **/admin** (source mapping UI). Empty = no auth (use only on trusted network) |
+| `GITHUB_REPO` | Optional. GitHub repo URL shown in the home page footer (e.g. for demo / side project) |
 
 ## LINE Messaging API usage
 
@@ -115,6 +121,7 @@ mkdir -p data && chown 1000:1000 data
 |--------|------|-------------|
 | `GET` | `/` | Service info |
 | `GET` | `/health` | Health check: 200 if Nextcloud is reachable (PROPFIND), else 503. Used by Docker Compose for container health. |
+| `GET` / `POST` | `/admin` | **Source mapping UI**: view and edit number → folder (e.g. 1:Amigo, 2:Ben). Optional HTTP Basic auth via `ADMIN_PASSWORD`. Saves to `SOURCE_MAP_FILE`. |
 | `GET` | `/debug-webdav` | Test Nextcloud WebDAV (creates base folder) |
 | `POST` | `/callback` | LINE webhook (signature-verified) |
 
@@ -123,6 +130,16 @@ mkdir -p data && chown 1000:1000 data
 - **Media**: Not stored on the server. Flow is: LINE → temp file (during transfer) → upload to Nextcloud → temp file deleted. Only Nextcloud holds the backup; nothing accumulates locally.
 - **Local state**: If `SOURCE_STATE_FILE` is set (e.g. `data/source_state.json`), a small JSON file stores user → source folder mapping. No need to clean it periodically.
 - **Temp files**: Download/upload uses the system temp directory; files are deleted after success or failure, so they do not grow over time.
+
+## Source mapping (admin UI)
+
+You can edit the **number → folder** mapping (e.g. 1=Amigo, 2=Ben) without touching `.env`:
+
+1. Open **`https://your-bot-host/admin`** in a browser.
+2. If you set `ADMIN_PASSWORD` in `.env`, the browser will prompt for a password (use any username, e.g. `admin`, and the password you set).
+3. Edit the text area (one line per mapping: `number: FolderName`), then click **Save**. Changes take effect immediately and are stored in `data/source_map.json` (or `SOURCE_MAP_FILE`). No restart needed.
+
+This is useful for non-technical users: they can change folder names or add new numbers without editing env or code.
 
 ## Tips
 

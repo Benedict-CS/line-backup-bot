@@ -148,6 +148,23 @@ This is useful for non-technical users: they can change folder names or add new 
 - **Multiple instances**: If you run more than one instance for the same bot, source state is not shared; prefer a single instance.
 - **Duplicate events**: When LINE resends the same webhook, the bot skips already-processed messages by `message_id` so the same file or link is not backed up twice.
 
+## Deployment and secrets
+
+- **Never commit `.env`** — it contains secrets (LINE tokens, Nextcloud password, admin password). Use `.env.example` as a template and fill values on the server or in your CI.
+- **Where to set variables**: Copy `.env.example` to `.env`, edit with your real values. For Docker, ensure `.env` is on the host and passed into the container (e.g. `env_file: .env` in `docker-compose.yml`).
+- **Restart after changing .env**: The app reads env at startup; run `docker compose up -d --build` or restart uvicorn after editing `.env`.
+
+## Optional: health check alert
+
+If you want to be notified when the bot or Nextcloud is down, run a cron job that calls `/health` and alerts on failure:
+
+```bash
+# Example: every 5 minutes, alert if /health returns non-200
+*/5 * * * * curl -sf https://your-bot-host/health || echo "LINE Backup health check failed"
+```
+
+You can pipe the failure into a script that sends email, Slack, or Telegram (e.g. `curl ... || send_alert.sh`).
+
 ## Push to GitHub
 
 1. **Do not commit `.env`** (it is in `.gitignore`; use `.env.example` as a template).
@@ -164,6 +181,17 @@ git push -u origin main
 ```
 
 3. If the repo already exists, add the remote and push as needed.
+
+## Running tests
+
+From the project root (with dependencies installed):
+
+```bash
+pip install -r requirements.txt
+pytest tests/ -v
+```
+
+Tests cover `nextcloud` helpers, `auth` (login / rate limit), `hash_store`, and `processed_ids` without hitting real LINE or Nextcloud.
 
 ## License
 

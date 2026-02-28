@@ -81,6 +81,8 @@
     .help code { background: var(--bg); padding: 0.12em 0.35em; border-radius: 4px; }
     .config-check { margin-bottom: 1rem; padding: 0.65rem 0.9rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius-sm); font-size: 0.85rem; color: #92400e; }
     .config-check code { background: rgba(0,0,0,.06); padding: 0.1em 0.3em; border-radius: 4px; }
+    .tip { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; }
+    .tip code { background: var(--bg); padding: 0.1em 0.3em; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -96,6 +98,7 @@
   <main class="main">
     <h1>Manage source map</h1>
     <p class="sub">Send a number in LINE and media is saved under that folder. Use "0" or "other" for the default folder.</p>
+    <p class="tip">Tip: Set <code>SOURCE_MAP_FILE</code> in .env so the mapping is saved to a file and survives restart.</p>
     {{ config_check }}
     {{ logout_note }}
     {{ auth_warn }}

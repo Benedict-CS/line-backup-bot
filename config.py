@@ -38,8 +38,14 @@ GITHUB_REPO = (os.getenv("GITHUB_REPO") or "").strip()
 # Optional: backup plain text (no URL) to daily notes.txt in Nextcloud.
 ENABLE_TEXT_BACKUP = (os.getenv("ENABLE_TEXT_BACKUP", "false") or "").strip().lower() in ("1", "true", "yes")
 
+# Optional: fetch page <title> for link backup and prepend to content. true/false.
+ENABLE_LINK_TITLE = (os.getenv("ENABLE_LINK_TITLE", "true") or "").strip().lower() in ("1", "true", "yes")
+
 # Optional: file to store uploaded file hashes for duplicate skip. Empty = disabled.
 UPLOADED_HASHES_FILE = (os.getenv("UPLOADED_HASHES_FILE", "data/uploaded_hashes.json") or "").strip()
+
+# Optional: file to persist processed webhook message IDs (avoid duplicate after restart). Empty = in-memory only.
+PROCESSED_IDS_FILE = (os.getenv("PROCESSED_IDS_FILE", "data/processed_message_ids.json") or "").strip()
 
 # Admin session
 ADMIN_COOKIE_NAME = "admin_session"
@@ -48,6 +54,8 @@ ADMIN_SESSION_SECONDS = 3600  # 1 hour
 # Login rate limit: same IP, 5 consecutive failures -> lock 15 minutes
 LOGIN_MAX_FAILED = 5
 LOGIN_LOCK_SECONDS = 15 * 60
+# Optional: persist login rate limit state to file (survives restart). Empty = in-memory only.
+LOGIN_RATE_LIMIT_FILE = (os.getenv("LOGIN_RATE_LIMIT_FILE", "data/login_rate_limit.json") or "").strip()
 
 # Keys we consider required vs recommended for config check
 REQUIRED_ENV_KEYS = ("LINE_CHANNEL_SECRET", "LINE_CHANNEL_ACCESS_TOKEN", "NEXTCLOUD_URL", "NEXTCLOUD_USER", "NEXTCLOUD_PASSWORD")

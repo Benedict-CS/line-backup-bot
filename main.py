@@ -2,6 +2,10 @@
 LINE Bot: File transfer & archive relay to Nextcloud.
 Receives image/video/audio/file messages, downloads content, uploads to Nextcloud via WebDAV.
 """
+import base64
+import hmac
+import hashlib
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -19,7 +23,6 @@ import stats
 from fastapi import FastAPI, Request, HTTPException, Form
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
 import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -50,6 +53,27 @@ def _render_template(name: str, **kwargs: str) -> str:
 
 def _html_esc(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _validate_line_signature(body: bytes, signature: str) -> bool:
+    """Validate X-Line-Signature (HMAC-SHA256 of body, base64). Return True if valid."""
+    if not signature or not config.LINE_CHANNEL_SECRET:
+        return False
+    gen = hmac.new(
+        config.LINE_CHANNEL_SECRET.encode("utf-8"),
+        body,
+        hashlib.sha256,
+    ).digest()
+    expected = base64.b64encode(gen).decode("utf-8")
+    return hmac.compare_digest(signature.encode("utf-8"), expected.encode("utf-8"))
+
+
+def _run_webhook_handlers(body_str: str, signature: str) -> None:
+    """Run LINE webhook handlers (sync, blocking). Call from executor only."""
+    try:
+        handler.handle(body_str, signature)
+    except Exception as e:
+        log.exception("Webhook handler error: %s", e)
 
 
 def _config_check_html() -> str:
@@ -108,36 +132,18 @@ def root(request: Request):
 
 
 @app.get("/health")
-def health():
-    try:
-        root_url = nextcloud.webdav_url("")
-        r = requests.request(
-            "PROPFIND", root_url,
-            auth=(config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD),
-            timeout=10, headers={"Depth": "0"}
-        )
-        if r.status_code in (200, 207):
-            return {"status": "ok", "nextcloud": "ok"}
-    except Exception as e:
-        log.debug("Health check Nextcloud: %s", e)
+async def health():
+    nextcloud_ok = await nextcloud.check_nextcloud_async(timeout=10.0)
+    if nextcloud_ok:
+        return {"status": "ok", "nextcloud": "ok"}
     return JSONResponse(status_code=503, content={"status": "degraded", "nextcloud": "error"})
 
 
 @app.get("/status", response_class=HTMLResponse)
-def status_page(request: Request):
+async def status_page(request: Request):
     """Simple status: LINE config, Nextcloud, last backup, backups today."""
     line_ok = bool(config.LINE_CHANNEL_SECRET and config.LINE_CHANNEL_ACCESS_TOKEN)
-    nextcloud_ok = False
-    try:
-        root_url = nextcloud.webdav_url("")
-        r = requests.request(
-            "PROPFIND", root_url,
-            auth=(config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD),
-            timeout=8, headers={"Depth": "0"},
-        )
-        nextcloud_ok = r.status_code in (200, 207)
-    except Exception:
-        pass
+    nextcloud_ok = await nextcloud.check_nextcloud_async(timeout=8.0)
     last_at = stats.get_last_backup_at()
     last_backup_str = last_at.strftime("%Y-%m-%d %H:%M") if last_at else "—"
     backups_today = stats.get_backups_today()
@@ -255,9 +261,10 @@ async def callback(request: Request):
     if not signature or not config.LINE_CHANNEL_SECRET or not config.LINE_CHANNEL_ACCESS_TOKEN:
         raise HTTPException(status_code=500, detail="LINE credentials not configured")
 
-    try:
-        handler.handle(body.decode("utf-8"), signature)
-    except InvalidSignatureError:
+    if not _validate_line_signature(body, signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
+    body_str = body.decode("utf-8")
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, lambda: _run_webhook_handlers(body_str, signature))
     return "OK"

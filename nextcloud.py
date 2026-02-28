@@ -1,10 +1,13 @@
 """
 Nextcloud WebDAV: upload files, create folders.
+Async implementation with aiohttp for non-blocking I/O; sync wrappers for callers in threads.
 """
+import asyncio
 import time
 from datetime import datetime
 from pathlib import Path
 
+import aiohttp
 import requests
 
 import config
@@ -35,6 +38,13 @@ def _safe_file_stem(name: str, max_len: int = 80) -> str:
     return (s[:max_len] or "file").strip("._")
 
 
+def _safe_link_title(title: str, max_len: int = 60) -> str:
+    """Sanitize page title for link filename: alphanumeric, space, underscore, hyphen."""
+    s = "".join(c if c.isalnum() or c in " _-" else "_" for c in (title or ""))
+    s = "_".join(s.split()).strip("_")
+    return (s[:max_len] or "").strip()
+
+
 def guess_extension(message_type: str) -> str:
     """Guess file extension from LINE message type."""
     m = {"image": ".jpg", "video": ".mp4", "audio": ".m4a", "file": "", "link": ".txt"}
@@ -44,19 +54,20 @@ def guess_extension(message_type: str) -> str:
 # Subfolder under date: image, video, link, files
 _TYPE_SUBFOLDER = {"image": "image", "video": "video", "link": "link", "audio": "files", "file": "files"}
 
+_TIMEOUT_MKCOL = aiohttp.ClientTimeout(total=30)
+_TIMEOUT_PUT = aiohttp.ClientTimeout(total=120)
 
-def upload_to_nextcloud(
+
+async def _upload_to_nextcloud_async(
     suggested_name: str,
     message_type: str,
     source_folder: str = "other",
     *,
     content: bytes | None = None,
     file_path: Path | None = None,
+    link_title: str | None = None,
 ) -> str:
-    """
-    Upload to Nextcloud under LINE_Backup/{source}/YYYY-MM-DD/{type}/.
-    Provide either content (bytes) or file_path; file_path is streamed.
-    """
+    """Async upload via aiohttp (non-blocking)."""
     if (content is None) == (file_path is None):
         raise ValueError("Provide exactly one of content or file_path")
     now = datetime.now(TZ)
@@ -70,6 +81,10 @@ def upload_to_nextcloud(
     if message_type == "file":
         stem = _safe_file_stem(suggested_name)
         safe_name = f"{stem}{ext}"
+    elif message_type == "link" and link_title:
+        safe = _safe_link_title(link_title)
+        part = f"link_{date_compact}_{time_compact}_{ms}{ext}"
+        safe_name = f"[{safe}] {part}" if safe else part
     else:
         prefix = {"image": "img", "video": "vid", "audio": "aud", "link": "link"}.get(message_type, "file")
         safe_name = f"{prefix}_{date_compact}_{time_compact}_{ms}{ext}"
@@ -79,36 +94,58 @@ def upload_to_nextcloud(
     remote_dir = f"{base}/{source_safe}/{date_folder}/{type_subfolder}"
     remote_path = f"{remote_dir}/{safe_name}"
 
-    auth = (config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD)
+    auth = aiohttp.BasicAuth(config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD)
     last_err = None
     for attempt in range(3):
         try:
-            for part in [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}", remote_dir]:
-                url_dir = webdav_url(part + "/")
-                r = requests.request("MKCOL", url_dir, auth=auth, timeout=30)
-                if r.status_code not in (201, 204, 405):
-                    raise RuntimeError(f"MKCOL {part}: {r.status_code} {r.text[:200]}")
-            url_file = webdav_url(remote_path)
-            if file_path is not None:
-                with open(file_path, "rb") as f:
-                    r3 = requests.put(url_file, data=f, auth=auth, timeout=120)
-            else:
-                r3 = requests.put(url_file, data=content, auth=auth, timeout=120)
-            if r3.status_code not in (200, 201, 204):
-                raise RuntimeError(f"PUT {remote_path}: {r3.status_code} {r3.text[:200]}")
+            async with aiohttp.ClientSession() as session:
+                for part in [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}", remote_dir]:
+                    url_dir = webdav_url(part + "/")
+                    async with session.request("MKCOL", url_dir, auth=auth, timeout=_TIMEOUT_MKCOL) as r:
+                        if r.status not in (201, 204, 405):
+                            text = await r.text()
+                            raise RuntimeError(f"MKCOL {part}: {r.status} {text[:200]}")
+                url_file = webdav_url(remote_path)
+                if file_path is not None:
+                    data = file_path.read_bytes()
+                else:
+                    data = content
+                async with session.put(url_file, data=data, auth=auth, timeout=_TIMEOUT_PUT) as r3:
+                    if r3.status not in (200, 201, 204):
+                        text = await r3.text()
+                        raise RuntimeError(f"PUT {remote_path}: {r3.status} {text[:200]}")
             return remote_path
         except Exception as e:
             last_err = e
             if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))
+                await asyncio.sleep(1.5 * (attempt + 1))
     raise last_err
 
 
-def append_to_daily_notes(source_folder: str, text: str) -> str:
+def upload_to_nextcloud(
+    suggested_name: str,
+    message_type: str,
+    source_folder: str = "other",
+    *,
+    content: bytes | None = None,
+    file_path: Path | None = None,
+    link_title: str | None = None,
+) -> str:
     """
-    Append plain text to LINE_Backup/{source}/YYYY-MM-DD/notes.txt.
-    Creates file if missing. Returns remote path.
+    Upload to Nextcloud under LINE_Backup/{source}/YYYY-MM-DD/{type}/.
+    Uses aiohttp in background; safe to call from sync code (e.g. handler thread).
+    link_title: optional page title for link type (used in filename when set).
     """
+    return asyncio.run(
+        _upload_to_nextcloud_async(
+            suggested_name, message_type, source_folder,
+            content=content, file_path=file_path, link_title=link_title,
+        )
+    )
+
+
+async def _append_to_daily_notes_async(source_folder: str, text: str) -> str:
+    """Async append notes via aiohttp."""
     now = datetime.now(TZ)
     date_folder = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M")
@@ -116,21 +153,48 @@ def append_to_daily_notes(source_folder: str, text: str) -> str:
     source_safe = source_map.safe_folder_name(source_folder) or "other"
     remote_dir = f"{base}/{source_safe}/{date_folder}"
     remote_path = f"{remote_dir}/notes.txt"
-    auth = (config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD)
+    auth = aiohttp.BasicAuth(config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD)
     url_file = webdav_url(remote_path)
     existing = ""
-    try:
-        r = requests.get(url_file, auth=auth, timeout=30)
-        if r.status_code == 200:
-            existing = r.text or ""
-    except Exception:
-        pass
-    new_block = f"\n---\n{time_str}\n{text.strip()}\n"
-    content = (existing + new_block).strip().encode("utf-8")
-    for part in [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}"]:
-        url_dir = webdav_url(part + "/")
-        requests.request("MKCOL", url_dir, auth=auth, timeout=30)
-    r = requests.put(url_file, data=content, auth=auth, timeout=30)
-    if r.status_code not in (200, 201, 204):
-        raise RuntimeError(f"PUT notes.txt: {r.status_code} {r.text[:200]}")
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url_file, auth=auth, timeout=_TIMEOUT_MKCOL) as r:
+                if r.status == 200:
+                    existing = await r.text() or ""
+        except Exception:
+            pass
+        new_block = f"\n---\n{time_str}\n{text.strip()}\n"
+        content = (existing + new_block).strip().encode("utf-8")
+        for part in [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}"]:
+            url_dir = webdav_url(part + "/")
+            async with session.request("MKCOL", url_dir, auth=auth, timeout=_TIMEOUT_MKCOL) as _:
+                pass
+        async with session.put(url_file, data=content, auth=auth, timeout=_TIMEOUT_MKCOL) as r:
+            if r.status not in (200, 201, 204):
+                t = await r.text()
+                raise RuntimeError(f"PUT notes.txt: {r.status} {t[:200]}")
     return remote_path
+
+
+def append_to_daily_notes(source_folder: str, text: str) -> str:
+    """
+    Append plain text to LINE_Backup/{source}/YYYY-MM-DD/notes.txt.
+    Creates file if missing. Returns remote path.
+    """
+    return asyncio.run(_append_to_daily_notes_async(source_folder, text))
+
+
+async def check_nextcloud_async(timeout: float = 10.0) -> bool:
+    """PROPFIND root; return True if Nextcloud is reachable (for /health, /status)."""
+    try:
+        auth = aiohttp.BasicAuth(config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD)
+        url = webdav_url("")
+        async with aiohttp.ClientSession() as session:
+            async with session.request(
+                "PROPFIND", url, auth=auth,
+                timeout=aiohttp.ClientTimeout(total=timeout),
+                headers={"Depth": "0"},
+            ) as r:
+                return r.status in (200, 207)
+    except Exception:
+        return False

@@ -21,13 +21,11 @@ import nextcloud
 import source_map
 import stats
 import hash_store
+import link_metadata
+import processed_ids
 
 # Set by register(); handlers use this
 line_bot_api = None
-
-# Skip duplicate webhook delivery (LINE may retry)
-_processed_message_ids: set[str] = set()
-_MAX_PROCESSED_IDS = 10000
 
 _URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
@@ -43,9 +41,16 @@ def _backup_links_to_nextcloud(text: str, source_folder: str, user_id: str | Non
     body = text.strip()
     if not body:
         return
+    urls = _extract_urls(text)
+    title = ""
+    if urls and config.ENABLE_LINK_TITLE:
+        title = link_metadata.fetch_page_title(urls[0])
+        if title:
+            body = f"[{title}]\n\n{body}"
     try:
         remote_path = nextcloud.upload_to_nextcloud(
-            "link.txt", "link", source_folder=source_folder, content=body.encode("utf-8")
+            "link.txt", "link", source_folder=source_folder,
+            content=body.encode("utf-8"), link_title=title or None,
         )
         log.info("Link backup ok: %s", remote_path)
         stats.record_backup()
@@ -64,12 +69,10 @@ def _handle_media_message(event):
     message_type = msg.type
     user_id = getattr(event.source, "user_id", None) if hasattr(event, "source") else None
 
-    if message_id in _processed_message_ids:
+    if processed_ids.contains(message_id):
         log.info("Skip duplicate message_id: %s", message_id)
         return
-    if len(_processed_message_ids) >= _MAX_PROCESSED_IDS:
-        _processed_message_ids.clear()
-    _processed_message_ids.add(message_id)
+    processed_ids.add(message_id)
 
     if config.ENABLE_LINE_REPLIES and line_bot_api:
         line_bot_api.reply_message(reply_token, TextSendMessage(text="收到檔案，準備下載..."))
@@ -159,13 +162,11 @@ def _handle_text(event):
     urls = _extract_urls(text)
     if urls:
         message_id = getattr(event.message, "id", None)
-        if message_id and message_id in _processed_message_ids:
+        if message_id and processed_ids.contains(message_id):
             log.info("Skip duplicate link message_id: %s", message_id)
         else:
             if message_id:
-                if len(_processed_message_ids) >= _MAX_PROCESSED_IDS:
-                    _processed_message_ids.clear()
-                _processed_message_ids.add(message_id)
+                processed_ids.add(message_id)
             source_folder = source_map.user_source.get(user_id, "other")
             _backup_links_to_nextcloud(text, source_folder, user_id)
         return

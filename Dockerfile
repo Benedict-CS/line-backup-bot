@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir 'aiohttp>=3.9' --only-binary aiohttp && \
     pip install --no-cache-dir line-bot-sdk==2.4.3 --no-deps && \
     pip install --no-cache-dir fastapi==0.109.2 uvicorn==0.27.1 python-dotenv==1.0.1 requests python-multipart future
 
-COPY main.py .
+COPY main.py config.py source_map.py nextcloud.py auth.py handlers.py stats.py hash_store.py .
 COPY templates/ templates/
 
 # Run as non-root (security)

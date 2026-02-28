@@ -3,37 +3,60 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d9488">
   <title>Log in — LINE Backup Bot</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231a73e8'%3E%3Cpath d='M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l6.9 3.45L12 11.09 5.1 7.63 12 4.18zM4 8.82l7 3.5v7.36l-7-3.5V8.82zm9 10.86v-7.36l7-3.5v7.36l-7 3.5z'/%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230d9488'%3E%3Cpath d='M12 2L2 7v10l10 5 10-5V7L12 2z'/%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --border: #e7e5e4;
+      --text: #1c1917;
+      --muted: #78716c;
+      --accent: #0d9488;
+      --accent-hover: #0f766e;
+      --error: #dc2626;
+      --error-bg: #fef2f2;
+      --radius: 16px;
+      --radius-btn: 12px;
+      --touch: 48px;
+      --content-max: 960px;
+      --side: clamp(1.25rem, 4vw, 2rem);
+    }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; min-height: 100vh; background: linear-gradient(160deg, #f0f4ff 0%, #e8eef8 100%); color: #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1rem; }
-    .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.06); max-width: 400px; width: 100%; padding: 2.5rem; }
-    .logo { font-size: 1.25rem; font-weight: 600; color: #1a1a2e; margin-bottom: 0.25rem; }
-    .sub { color: #5f6368; font-size: 0.9rem; margin-bottom: 1.5rem; }
-    .msg { padding: .75rem 1rem; border-radius: 8px; font-size: 0.9rem; margin-bottom: 1rem; }
-    .msg--error { background: #fce8e6; color: #c5221f; }
-    form label { display: block; font-weight: 500; font-size: 0.9rem; margin-bottom: 0.5rem; color: #333; }
-    form input[type="password"] { width: 100%; padding: 0.75rem 1rem; font-size: 1rem; border: 1px solid #dadce0; border-radius: 10px; margin-bottom: 1.25rem; }
-    form input:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,.2); }
-    .btn { padding: 0.65rem 1.25rem; font-size: 0.95rem; font-weight: 500; border-radius: 10px; border: none; cursor: pointer; font-family: inherit; width: 100%; }
-    .btn--primary { background: #1a73e8; color: #fff; }
-    .btn--primary:hover { background: #1557b0; }
-    .back { display: block; text-align: center; margin-top: 1.25rem; font-size: 0.9rem; color: #5f6368; text-decoration: none; }
-    .back:hover { color: #1a73e8; }
+    body { margin: 0; min-height: 100vh; font-family: 'DM Sans', system-ui, sans-serif; font-size: 1rem; line-height: 1.6; color: var(--text); background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--side); }
+    .card { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.75rem; }
+    .title { font-size: 1.2rem; font-weight: 700; color: var(--text); margin: 0 0 0.2rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .msg { padding: 0.65rem 0.9rem; border-radius: var(--radius-btn); font-size: 0.875rem; margin-bottom: 0.9rem; }
+    .msg--error { background: var(--error-bg); color: var(--error); }
+    form label { display: block; font-weight: 500; font-size: 0.9rem; margin-bottom: 0.4rem; color: var(--text); }
+    form input[type="password"] { width: 100%; padding: 0.65rem 0.9rem; min-height: var(--touch); font-size: 1rem; border: 2px solid var(--border); border-radius: var(--radius-btn); margin-bottom: 1rem; font-family: inherit; transition: border-color .2s; }
+    form input:focus { outline: none; border-color: var(--accent); }
+    .btn { width: 100%; padding: 0 1.1rem; min-height: var(--touch); font-size: 0.9rem; font-weight: 600; border-radius: var(--radius-btn); border: none; cursor: pointer; font-family: inherit; background: var(--accent); color: #fff; transition: background .2s; }
+    .btn:hover { background: var(--accent-hover); }
+    .back { display: block; text-align: center; margin-top: 1rem; font-size: 0.875rem; color: var(--muted); text-decoration: none; }
+    .back:hover { color: var(--accent); }
+    .topbar { position: absolute; top: 1rem; left: var(--side); }
+    .topbar a { font-weight: 600; color: var(--text); text-decoration: none; font-size: 0.9375rem; }
+    .topbar a:hover { color: var(--accent); }
   </style>
 </head>
 <body>
+  <a href="/" class="topbar">← LINE Backup</a>
   <div class="card">
-    <div class="logo">Admin login</div>
-    <p class="sub">Enter the admin password to manage the source map.</p>
+    <h1 class="title">Admin login</h1>
+    <p class="sub">Password to manage the source map.</p>
     {{ error_html }}
     <form method="post" action="/admin/login">
       <label for="password">Password</label>
-      <input type="password" id="password" name="password" placeholder="Admin password" autocomplete="current-password" autofocus>
-      <button type="submit" class="btn btn--primary">Log in</button>
+      <input type="password" id="password" name="password" placeholder="Password" autocomplete="current-password" autofocus>
+      <button type="submit" class="btn">Log in</button>
     </form>
-    <a href="/" class="back">← Back to home</a>
+    <a href="/" class="back">Back to home</a>
   </div>
 </body>
 </html>

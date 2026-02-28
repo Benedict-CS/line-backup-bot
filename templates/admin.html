@@ -3,51 +3,100 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Edit source map — LINE Backup Bot</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231a73e8'%3E%3Cpath d='M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18l6.9 3.45L12 11.09 5.1 7.63 12 4.18zM4 8.82l7 3.5v7.36l-7-3.5V8.82zm9 10.86v-7.36l7-3.5v7.36l-7 3.5z'/%3E%3C/svg%3E" type="image/svg+xml">
+  <meta name="theme-color" content="#0d9488">
+  <title>Manage source map — LINE Backup Bot</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230d9488'%3E%3Cpath d='M12 2L2 7v10l10 5 10-5V7L12 2z'/%3E%3C/svg%3E" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --border: #e7e5e4;
+      --text: #1c1917;
+      --muted: #78716c;
+      --accent: #0d9488;
+      --accent-hover: #0f766e;
+      --success: #059669;
+      --success-bg: #ecfdf5;
+      --error: #dc2626;
+      --error-bg: #fef2f2;
+      --warn-bg: #fffbeb;
+      --warn: #b45309;
+      --radius: 16px;
+      --radius-sm: 12px;
+      --touch: 48px;
+      --content-max: 960px;
+      --side: clamp(1.25rem, 4vw, 2rem);
+    }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; min-height: 100vh; background: #f0f2f5; color: #1a1a1a; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
-    .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); max-width: 560px; width: 100%; padding: 2rem; }
-    .nav-top { margin-bottom: 1rem; font-size: 0.9rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    .nav-top a { color: #1a73e8; text-decoration: none; }
-    .nav-top a:hover { text-decoration: underline; }
-    .nav-top .logout { color: #5f6368; margin-left: auto; }
-    .nav-note { font-size: 0.8rem; color: #5f6368; margin: 0.5rem 0 0; }
-    h1 { margin: 0 0 .5rem; font-size: 1.5rem; font-weight: 600; color: #111; }
-    .sub { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.5; }
-    .msg { padding: .75rem 1rem; border-radius: 8px; font-size: 0.9rem; margin-bottom: 1rem; }
-    .msg--ok { background: #e6f4ea; color: #137333; }
-    .msg--error { background: #fce8e6; color: #c5221f; }
-    .msg--warn { background: #fef7e0; color: #b06000; }
-    .tbl-wrap { overflow-x: auto; margin-bottom: 1rem; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    th, td { padding: .5rem .75rem; text-align: left; border-bottom: 1px solid #eee; }
-    th { font-weight: 600; color: #333; background: #f8f9fa; }
-    th { width: 28%; }
-    th:last-child { width: 80px; }
-    td input { width: 100%; padding: .4rem .5rem; border: 1px solid #dadce0; border-radius: 6px; font-size: 0.9rem; }
-    td input:focus { outline: none; border-color: #1a73e8; }
-    .btn-row { padding: .25rem 0; }
-    .btn--sm { padding: .25rem .5rem; font-size: 0.8rem; background: #f0f2f5; color: #5f6368; border: none; border-radius: 6px; cursor: pointer; }
-    .btn--sm:hover { background: #e8eaed; color: #c5221f; }
-    .actions { margin-top: 1rem; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-    .btn { padding: .5rem 1.25rem; font-size: 0.9rem; font-weight: 500; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; }
-    .btn--primary { background: #1a73e8; color: #fff; }
-    .btn--primary:hover { background: #1557b0; }
-    .btn--secondary { background: #f0f2f5; color: #3c4043; }
-    .btn--secondary:hover { background: #e8eaed; }
-    .btn--outline { background: transparent; color: #1a73e8; border: 1px solid #dadce0; }
-    .btn--outline:hover { background: #f0f7ff; }
-    .help { font-size: 0.85rem; color: #5f6368; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; }
-    .help code { background: #f0f2f5; padding: .15em .4em; border-radius: 4px; font-size: 0.85em; }
+    body { margin: 0; min-height: 100vh; font-family: 'DM Sans', system-ui, sans-serif; font-size: 1rem; line-height: 1.6; color: var(--text); background: var(--bg); padding: 0 var(--side); }
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem var(--side);
+      margin: 0 calc(-1 * var(--side));
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .header-inner { max-width: var(--content-max); margin: 0 auto; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; width: 100%; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .session-countdown { font-size: 0.8125rem; color: var(--muted); }
+    .session-countdown .timer { font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .session-countdown[data-seconds="0"] { display: none; }
+    .header a { font-weight: 600; color: var(--text); text-decoration: none; font-size: 0.9375rem; }
+    .header a:hover { color: var(--accent); }
+    .header .logout { color: var(--muted); }
+    .header .logout:hover { color: var(--error); }
+    .main { max-width: var(--content-max); margin: 0 auto; padding: 1.5rem 0 2rem; }
+    h1 { font-size: clamp(1.2rem, 2.5vw, 1.45rem); font-weight: 700; color: var(--text); margin: 0 0 0.3em; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+    .msg { padding: 0.65rem 0.9rem; border-radius: var(--radius-sm); font-size: 0.875rem; margin-bottom: 0.75rem; }
+    .msg--ok { background: var(--success-bg); color: var(--success); }
+    .msg--error { background: var(--error-bg); color: var(--error); }
+    .msg--warn { background: var(--warn-bg); color: var(--warn); }
+    .tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 0.75rem; }
+    table { width: 100%; min-width: 280px; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 0.55rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-weight: 600; color: var(--text); background: var(--bg); }
+    th:last-child { width: 76px; }
+    td input { width: 100%; padding: 0.45rem 0.6rem; font-size: 0.9rem; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; transition: border-color .2s; }
+    td input:focus { outline: none; border-color: var(--accent); }
+    .btn-row { padding: 0.2rem 0; }
+    .btn--sm { padding: 0.35rem 0.6rem; font-size: 0.8125rem; font-weight: 500; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-family: inherit; transition: border-color .2s, color .2s; }
+    .btn--sm:hover { border-color: var(--error); color: var(--error); }
+    .actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.75rem; }
+    .btn { padding: 0 1.1rem; min-height: var(--touch); font-size: 0.9rem; font-weight: 600; border-radius: var(--radius-sm); border: 2px solid transparent; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-family: inherit; transition: background .2s, border-color .2s, color .2s; }
+    .btn--primary { background: var(--accent); color: #fff; }
+    .btn--primary:hover { background: var(--accent-hover); }
+    .btn--outline { background: transparent; color: var(--text); border-color: var(--border); }
+    .btn--outline:hover { border-color: var(--accent); color: var(--accent); }
+    .btn--secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+    .btn--secondary:hover { border-color: var(--accent); color: var(--accent); }
+    @media (max-width: 480px) { .actions .btn { flex: 1 1 100%; } }
+    .help { font-size: 0.8rem; color: var(--muted); margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+    .help code { background: var(--bg); padding: 0.12em 0.35em; border-radius: 4px; }
+    .config-check { margin-bottom: 1rem; padding: 0.65rem 0.9rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius-sm); font-size: 0.85rem; color: #92400e; }
+    .config-check code { background: rgba(0,0,0,.06); padding: 0.1em 0.3em; border-radius: 4px; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <p class="nav-top"><a href="/">← Back to home</a> {{ logout_link }}</p>
-    <h1>Edit source map</h1>
-    <p class="sub">In LINE, send a number then media is saved under that folder. Use "0" or "other" for the default folder.</p>
+  <header class="header">
+    <div class="header-inner">
+      <a href="/">← Home</a>
+      <span class="header-right">
+        <span id="sessionCountdown" class="session-countdown" data-seconds="{{ session_seconds }}">Session: <span id="sessionTimer" class="timer">--:--</span></span>
+        {{ logout_link }}
+      </span>
+    </div>
+  </header>
+  <main class="main">
+    <h1>Manage source map</h1>
+    <p class="sub">Send a number in LINE and media is saved under that folder. Use "0" or "other" for the default folder.</p>
+    {{ config_check }}
     {{ logout_note }}
     {{ auth_warn }}
     {{ msg_html }}
@@ -68,7 +117,7 @@
       </div>
     </form>
     <p class="help">Example: number <code>1</code> → folder <code>Amigo</code> means sending "1" in LINE saves to Amigo.</p>
-  </div>
+  </main>
   <script type="application/json" id="rowsData">{{ rows_json }}</script>
   <script>
     const rows = JSON.parse(document.getElementById('rowsData').textContent);
@@ -93,6 +142,21 @@
       });
       mappingInput.value = lines.join('\n');
     };
+    (function() {
+      var el = document.getElementById('sessionCountdown');
+      var timerEl = document.getElementById('sessionTimer');
+      var sec = parseInt(el.getAttribute('data-seconds') || '0', 10);
+      if (sec <= 0) return;
+      var end = Date.now() + sec * 1000;
+      function fmt(m, s) { return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s; }
+      function tick() {
+        var left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+        if (left <= 0) { window.location.href = '/admin/logout'; return; }
+        timerEl.textContent = fmt(Math.floor(left / 60), left % 60);
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
   </script>
 </body>
 </html>

@@ -1,12 +1,34 @@
 # LINE to Nextcloud Backup Bot
 
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![LINE](https://img.shields.io/badge/LINE-Messaging%20API-00B900?logo=line)](https://developers.line.biz/)
+[![Nextcloud](https://img.shields.io/badge/Nextcloud-WebDAV-0082C9?logo=nextcloud)](https://nextcloud.com/)
+[![aiohttp](https://img.shields.io/badge/aiohttp-Async%20HTTP-2C5AA0)](https://docs.aiohttp.org/)
+[![Docker](https://img.shields.io/badge/Docker-Container-2496ED?logo=docker)](https://www.docker.com/)
+[![pytest](https://img.shields.io/badge/pytest-Testing-0A9EDC?logo=pytest)](https://pytest.org/)
+
 A LINE bot that backs up media and links to your Nextcloud. It receives images, videos, audio, files, and text messages containing URLs, downloads content from LINE (before it expires), and uploads everything to your Nextcloud via WebDAV. All backups are organized by source, date, and type.
+
+## Tech stack
+
+| Layer | Technology | Role |
+|-------|------------|------|
+| **Runtime** | Python 3.11 | Application language |
+| **Web** | FastAPI | HTTP API, webhook endpoint, admin/login/status pages |
+| **Server** | Uvicorn | ASGI server |
+| **LINE** | LINE Messaging API / line-bot-sdk | Receive webhook, download media, optional reply/push |
+| **Storage** | Nextcloud WebDAV | Upload files; folder layout `LINE_Backup/{source}/{date}/{type}/` |
+| **HTTP client** | aiohttp | Non-blocking Nextcloud (MKCOL, PUT, PROPFIND) and link title fetch |
+| **Sync HTTP** | requests | Fallback (e.g. debug-webdav, link_metadata when needed) |
+| **Config** | python-dotenv | Load `.env` for secrets and options |
+| **Tests** | pytest | Unit tests for nextcloud, auth, hash_store, processed_ids |
+| **Deploy** | Docker | Single image, non-root user, port 8000 |
 
 ## Project overview
 
 - **Purpose**: Persist LINE media and important links to your own Nextcloud so you don’t lose them when LINE content expires.
 - **Flow**: LINE → webhook → bot downloads (or reads text) → uploads to Nextcloud → optional reply to user. No media is kept on the server; only a small optional state file (e.g. source selection) is stored locally.
-- **Stack**: Python 3.11, FastAPI, LINE Bot SDK, `requests` for WebDAV. Runs in Docker or locally with uvicorn.
 
 ## Features
 

@@ -42,6 +42,14 @@
     .hero-title .arrow { color: var(--accent); }
     .hero-desc { color: var(--muted); font-size: 0.9375rem; margin-bottom: 1.25rem; max-width: 36ch; }
     .cta { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+    .hero-how {
+      margin-top: 0.9rem;
+      font-size: 0.8125rem;
+      color: var(--muted);
+      line-height: 1.65;
+      max-width: 54ch;
+    }
+    .hero-how strong { color: var(--text); font-weight: 600; }
     .btn {
       padding: 0 1.25rem; min-height: var(--touch); font-size: 0.875rem; font-weight: 600; border-radius: var(--radius-btn);
       text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-family: inherit;
@@ -51,9 +59,24 @@
     .btn--primary:hover { background: var(--accent-hover); }
     .btn--outline { background: transparent; color: var(--text); border-color: var(--border); }
     .btn--outline:hover { border-color: var(--accent); color: var(--accent); }
-    .aside { flex: 0 0 auto; width: 100%; max-width: 320px; margin-left: clamp(1.5rem, 4vw, 3rem); }
-    .how { font-size: 0.8125rem; color: var(--muted); line-height: 1.65; }
-    .how strong { color: var(--text); font-weight: 600; }
+    .aside { flex: 0 0 auto; width: 100%; max-width: 360px; margin-left: clamp(1.5rem, 4vw, 3rem); }
+    .demo-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 0.75rem;
+      box-shadow: 0 6px 16px rgba(0,0,0,.04);
+    }
+    .demo-title { margin: 0 0 0.4rem; font-size: 0.875rem; font-weight: 700; color: var(--text); }
+    .demo-video {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+      background: #000;
+      border: 1px solid #d6d3d1;
+      height: auto;
+      object-fit: contain;
+    }
     .footer { max-width: var(--content-max); margin: 0 auto; padding: 0.75rem 0; text-align: center; font-size: 0.75rem; color: var(--muted); width: 100%; }
     .footer a { color: var(--muted); text-decoration: none; }
     .footer a:hover { color: var(--accent); }
@@ -79,14 +102,20 @@
       {{ config_check }}
       <div class="hero">
         <h1 class="hero-title">LINE <span class="arrow">→</span> Nextcloud</h1>
-        <p class="hero-desc">Send a number in LINE, then media or links — saved to Nextcloud by folder and date.</p>
+        <p class="hero-desc">Choose a source by sending a number in LINE (e.g. 1), then send photos, videos, files, or links. Backups are saved to <code>LINE_Backup / folder / date / type</code>; you can edit number→folder mapping in Manage source map.</p>
         <div class="cta">
           <a href="/admin" class="btn btn--outline">Manage source map</a>
           {{ nextcloud_link }}
         </div>
       </div>
       <aside class="aside">
-        <p class="how"><strong>How it works:</strong> Send a number (e.g. 1) in LINE to choose a folder, then send photos, videos, files or links. Files go to LINE_Backup / folder / date / type. Use Manage source map to edit number→folder (login required).</p>
+        <div class="demo-card">
+          <h2 class="demo-title">Live demo</h2>
+          <video class="demo-video" controls playsinline preload="metadata" poster="" aria-label="LINE to Nextcloud live demo">
+            <source src="/static/demo/live-demo.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        </div>
       </aside>
     </main>
     <footer class="footer">LINE Bot + Nextcloud{{ github_foot }}</footer>

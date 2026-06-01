@@ -22,6 +22,7 @@ import stats
 
 from fastapi import FastAPI, Request, HTTPException, Form
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from linebot import LineBotApi, WebhookHandler
 import requests
 
@@ -39,6 +40,9 @@ handlers.register(handler, line_bot_api)
 app = FastAPI(title="LINE to Nextcloud Backup Bot")
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+_STATIC_DIR = Path(__file__).parent / "static"
+_STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
 def _render_template(name: str, **kwargs: str) -> str:

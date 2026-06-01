@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir 'aiohttp>=3.9' --only-binary aiohttp && \
 
 COPY main.py config.py source_map.py nextcloud.py auth.py handlers.py stats.py hash_store.py link_metadata.py processed_ids.py .
 COPY templates/ templates/
+COPY static/ static/
 
 # Run as non-root (security)
 RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app

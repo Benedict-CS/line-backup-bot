@@ -14,7 +14,7 @@ A LINE bot that backs up media and links to your Nextcloud. It receives images, 
 
 Short walkthrough: choose a source number in LINE, then back up photos, videos, files, or links to Nextcloud.
 
-[Live demo video](static/demo/live-demo.mp4)
+[Live demo video](static/demo/live-demo-readme.mp4)
 
 ## Tech stack
 

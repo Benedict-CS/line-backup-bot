@@ -10,6 +10,12 @@
 
 A LINE bot that backs up media and links to your Nextcloud. It receives images, videos, audio, files, and text messages containing URLs, downloads content from LINE (before it expires), and uploads everything to your Nextcloud via WebDAV. All backups are organized by source, date, and type.
 
+## Live demo
+
+Short walkthrough: choose a source number in LINE, then back up photos, videos, files, or links to Nextcloud.
+
+[![Watch the live demo](https://img.youtube.com/vi/Xw6xE5GZ_W4/0.jpg)](https://youtu.be/Xw6xE5GZ_W4)
+
 ## Tech stack
 
 | Layer | Technology | Role |

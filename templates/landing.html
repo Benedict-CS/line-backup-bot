@@ -25,8 +25,9 @@
       --side: clamp(1.25rem, 4vw, 2rem);
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; font-family: 'DM Sans', system-ui, sans-serif; font-size: 1rem; line-height: 1.5; color: var(--text); background: var(--bg); }
-    .page { min-height: 100vh; display: flex; flex-direction: column; padding: 0 var(--side); }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html, body { margin: 0; min-height: 100%; font-family: 'DM Sans', system-ui, sans-serif; font-size: 1rem; line-height: 1.5; color: var(--text); background: var(--bg); overflow-x: clip; }
+    .page { min-height: 100vh; display: flex; flex-direction: column; padding: 0 var(--side); padding-left: max(var(--side), env(safe-area-inset-left)); padding-right: max(var(--side), env(safe-area-inset-right)); }
     .header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -40,7 +41,8 @@
     .hero { flex: 1; min-width: 0; }
     .hero-title { font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 700; letter-spacing: -0.03em; color: var(--text); margin: 0 0 0.35rem; line-height: 1.2; }
     .hero-title .arrow { color: var(--accent); }
-    .hero-desc { color: var(--muted); font-size: 0.9375rem; margin-bottom: 1.25rem; max-width: 36ch; }
+    .hero-desc { color: var(--muted); font-size: 0.9375rem; margin-bottom: 1.25rem; max-width: 36ch; overflow-wrap: break-word; word-break: break-word; }
+    .hero-desc code { font-size: 0.8125rem; }
     .cta { display: flex; flex-wrap: wrap; gap: 0.6rem; }
     .hero-how {
       margin-top: 0.9rem;
@@ -80,14 +82,21 @@
     .footer { max-width: var(--content-max); margin: 0 auto; padding: 0.75rem 0; text-align: center; font-size: 0.75rem; color: var(--muted); width: 100%; }
     .footer a { color: var(--muted); text-decoration: none; }
     .footer a:hover { color: var(--accent); }
-    .config-check { margin-bottom: 1rem; padding: 0.75rem 1rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius); font-size: 0.875rem; color: #92400e; }
+    .config-check { margin-bottom: 1rem; padding: 0.75rem 1rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius); font-size: 0.875rem; color: #92400e; overflow-wrap: break-word; word-break: break-word; width: 100%; }
     .config-check code { background: rgba(0,0,0,.06); padding: 0.1em 0.35em; border-radius: 4px; }
     @media (max-width: 720px) {
-      .main { flex-direction: column; align-items: flex-start; }
-      .aside { margin-left: 0; margin-top: 1.25rem; max-width: none; }
+      .main { flex-direction: column; align-items: stretch; gap: 1.25rem; }
+      .hero { width: 100%; }
+      .hero-desc { max-width: none; }
+      .aside { margin-left: 0; margin-top: 0; max-width: none; width: 100%; }
       .cta .btn { min-width: 0; }
     }
-    @media (max-width: 400px) { .cta .btn { width: 100%; } }
+    @media (max-width: 480px) {
+      .header-inner { gap: 0.75rem; }
+      .hero-title { font-size: 1.375rem; }
+      .cta { flex-direction: column; }
+      .cta .btn { width: 100%; }
+    }
   </style>
 </head>
 <body>

@@ -12,12 +12,20 @@
   <style>
     :root { --bg: #fafaf9; --surface: #fff; --border: #e7e5e4; --text: #1c1917; --muted: #78716c; --accent: #0d9488; --ok: #059669; --err: #dc2626; --content-max: 560px; --side: clamp(1rem, 3vw, 1.5rem); }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; font-family: 'DM Sans', system-ui, sans-serif; font-size: 1rem; background: var(--bg); color: var(--text); padding: var(--side); }
-    .wrap { max-width: var(--content-max); margin: 0 auto; }
-    h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 1rem; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    body { margin: 0; min-height: 100vh; font-family: 'DM Sans', system-ui, sans-serif; font-size: 1rem; background: var(--bg); color: var(--text); padding: var(--side); padding-left: max(var(--side), env(safe-area-inset-left)); padding-right: max(var(--side), env(safe-area-inset-right)); overflow-x: clip; }
+    .wrap { max-width: var(--content-max); margin: 0 auto; width: 100%; }
+    h1 { font-size: clamp(1.2rem, 4vw, 1.35rem); font-weight: 700; margin: 0 0 1rem; }
     table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
-    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
-    th { font-weight: 600; color: var(--muted); width: 40%; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); overflow-wrap: break-word; word-break: break-word; }
+    th { font-weight: 600; color: var(--muted); width: 40%; vertical-align: top; }
+    @media (max-width: 480px) {
+      table, thead, tbody, th, td, tr { display: block; width: 100%; }
+      tr { border-bottom: 1px solid var(--border); padding: 0.5rem 0; }
+      th, td { border: none; padding: 0.2rem 0; width: 100%; }
+      th { font-size: 0.8125rem; margin-bottom: 0.15rem; }
+      td { font-size: 0.9375rem; padding-bottom: 0.65rem; }
+    }
     .ok { color: var(--ok); font-weight: 600; }
     .err { color: var(--err); font-weight: 600; }
     .back { display: inline-block; margin-top: 1.25rem; font-size: 0.9rem; color: var(--muted); text-decoration: none; font-weight: 500; }

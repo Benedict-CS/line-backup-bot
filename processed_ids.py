@@ -16,7 +16,8 @@ _MAX_IDS = 10000
 SAVE_EVERY_N = 50
 SAVE_INTERVAL_SEC = 60.0
 
-_ids: set[str] = set()
+# dict preserves insertion order — correct FIFO eviction (set does not).
+_ids: dict[str, None] = {}
 _loaded = False
 _dirty = 0
 _last_save_at = 0.0
@@ -39,10 +40,9 @@ def _load() -> None:
         return
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-        if isinstance(data, list):
-            _ids = set(data[-_MAX_IDS:])
-        elif isinstance(data, dict) and isinstance(data.get("ids"), list):
-            _ids = set(data["ids"][-_MAX_IDS:])
+        lst = data if isinstance(data, list) else (data.get("ids") if isinstance(data, dict) else None)
+        if isinstance(lst, list):
+            _ids = {k: None for k in lst[-_MAX_IDS:]}
         _last_save_at = time.time()
         log.info("Loaded %d processed message IDs from %s", len(_ids), p)
     except Exception as e:
@@ -57,8 +57,7 @@ def _save() -> None:
         return
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        lst = list(_ids)[-_MAX_IDS:]
-        p.write_text(json.dumps(lst, ensure_ascii=False), encoding="utf-8")
+        p.write_text(json.dumps(list(_ids), ensure_ascii=False), encoding="utf-8")
         _dirty = 0
         _last_save_at = time.time()
     except Exception as e:
@@ -67,7 +66,6 @@ def _save() -> None:
 
 def _save_if_needed() -> None:
     """Persist when batch size or interval reached."""
-    global _dirty
     if _dirty >= SAVE_EVERY_N or (_dirty > 0 and (time.time() - _last_save_at) >= SAVE_INTERVAL_SEC):
         _save()
 
@@ -80,12 +78,21 @@ def contains(message_id: str) -> bool:
 
 
 def add(message_id: str) -> None:
-    global _ids, _dirty
+    global _dirty
     if not message_id:
         return
     _load()
-    _ids.add(message_id)
-    if len(_ids) > _MAX_IDS:
-        _ids = set(list(_ids)[-_MAX_IDS:])
+    if message_id in _ids:
+        return
+    _ids[message_id] = None
+    # Evict oldest by insertion order (dict preserves it).
+    while len(_ids) > _MAX_IDS:
+        _ids.pop(next(iter(_ids)))
     _dirty += 1
     _save_if_needed()
+
+
+def flush() -> None:
+    """Force save any pending writes — call on shutdown."""
+    if _dirty > 0:
+        _save()

@@ -11,7 +11,8 @@ import config
 log = logging.getLogger(__name__)
 
 _MAX_HASHES = 50000
-_hashes: set[str] = set()
+# dict preserves insertion order — correct FIFO eviction (set does not).
+_hashes: dict[str, None] = {}
 _loaded = False
 
 
@@ -31,10 +32,9 @@ def _load() -> None:
         return
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-        if isinstance(data, list):
-            _hashes = set(data[-_MAX_HASHES:])
-        elif isinstance(data, dict) and isinstance(data.get("hashes"), list):
-            _hashes = set(data["hashes"][-_MAX_HASHES:])
+        lst = data if isinstance(data, list) else (data.get("hashes") if isinstance(data, dict) else None)
+        if isinstance(lst, list):
+            _hashes = {h: None for h in lst[-_MAX_HASHES:]}
     except Exception as e:
         log.warning("Could not load uploaded hashes: %s", e)
 
@@ -45,8 +45,7 @@ def _save() -> None:
         return
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        lst = list(_hashes)[-_MAX_HASHES:]
-        p.write_text(json.dumps(lst, ensure_ascii=False), encoding="utf-8")
+        p.write_text(json.dumps(list(_hashes), ensure_ascii=False), encoding="utf-8")
     except Exception as e:
         log.warning("Could not save uploaded hashes: %s", e)
 
@@ -70,11 +69,13 @@ def contains(h: str) -> bool:
 
 def add(h: str) -> None:
     """Record hash after successful upload."""
-    global _hashes
     if not config.UPLOADED_HASHES_FILE:
         return
     _load()
-    _hashes.add(h)
-    if len(_hashes) > _MAX_HASHES:
-        _hashes = set(list(_hashes)[-_MAX_HASHES:])
+    if h in _hashes:
+        return
+    _hashes[h] = None
+    # Evict oldest by insertion order.
+    while len(_hashes) > _MAX_HASHES:
+        _hashes.pop(next(iter(_hashes)))
     _save()

@@ -10,7 +10,7 @@ def temp_hash_file(monkeypatch, tmp_path):
     f = tmp_path / "hashes.json"
     monkeypatch.setattr("hash_store.config.UPLOADED_HASHES_FILE", str(f))
     monkeypatch.setattr("hash_store._loaded", False)
-    monkeypatch.setattr("hash_store._hashes", set())
+    monkeypatch.setattr("hash_store._hashes", {})
     yield f
 
 

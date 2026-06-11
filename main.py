@@ -19,6 +19,7 @@ import nextcloud
 import auth
 import handlers
 import stats
+import processed_ids
 
 from fastapi import FastAPI, Request, HTTPException, Form
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
@@ -44,12 +45,17 @@ _STATIC_DIR = Path(__file__).parent / "static"
 _STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
+_TEMPLATE_CACHE: dict[str, str] = {}
+
 
 def _render_template(name: str, **kwargs: str) -> str:
-    path = _TEMPLATES_DIR / name
-    if not path.exists():
-        raise FileNotFoundError(f"Template {name} not found at {path}")
-    t = path.read_text(encoding="utf-8")
+    t = _TEMPLATE_CACHE.get(name)
+    if t is None:
+        path = _TEMPLATES_DIR / name
+        if not path.exists():
+            raise FileNotFoundError(f"Template {name} not found at {path}")
+        t = path.read_text(encoding="utf-8")
+        _TEMPLATE_CACHE[name] = t
     for k, v in kwargs.items():
         t = t.replace("{{ " + k + " }}", (v or ""))
     return t
@@ -269,6 +275,15 @@ async def callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     body_str = body.decode("utf-8")
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, lambda: _run_webhook_handlers(body_str, signature))
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _run_webhook_handlers, body_str, signature)
     return "OK"
+
+
+@app.on_event("shutdown")
+def _on_shutdown() -> None:
+    """Flush any batched writes so we don't lose them on restart."""
+    try:
+        processed_ids.flush()
+    except Exception:
+        log.exception("Shutdown flush failed")

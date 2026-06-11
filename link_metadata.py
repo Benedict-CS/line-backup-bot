@@ -28,12 +28,12 @@ async def _fetch_page_title_async(url: str) -> str:
                 headers={"User-Agent": "LINE-Backup-Bot/1.0 (link metadata)"},
             ) as r:
                 r.raise_for_status()
-                raw = b""
+                buf = bytearray()
                 async for chunk in r.content.iter_chunked(8192):
-                    raw += chunk
-                    if len(raw) >= _TITLE_MAX_BYTES:
+                    buf.extend(chunk)
+                    if len(buf) >= _TITLE_MAX_BYTES:
                         break
-        text = raw.decode("utf-8", errors="ignore")
+        text = buf.decode("utf-8", errors="ignore")
         m = _TITLE_RE.search(text)
         if not m:
             return ""

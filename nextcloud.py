@@ -3,18 +3,19 @@ Nextcloud WebDAV: upload files, create folders.
 Async implementation with aiohttp for non-blocking I/O; sync wrappers for callers in threads.
 """
 import asyncio
-import time
 from datetime import datetime
 from pathlib import Path
 
 import aiohttp
-import requests
 
 import config
 import source_map
 
 # All times from config.TZ
 TZ = config.TZ
+
+# Directories we've already MKCOL'd this process — avoid redundant round-trips.
+_known_dirs: set[str] = set()
 
 
 def _webdav_root() -> str:
@@ -58,6 +59,19 @@ _TIMEOUT_MKCOL = aiohttp.ClientTimeout(total=30)
 _TIMEOUT_PUT = aiohttp.ClientTimeout(total=120)
 
 
+async def _ensure_dirs(session: aiohttp.ClientSession, auth: aiohttp.BasicAuth, dirs: list[str]) -> None:
+    """MKCOL each dir if not already created in this process."""
+    for part in dirs:
+        if part in _known_dirs:
+            continue
+        url_dir = webdav_url(part + "/")
+        async with session.request("MKCOL", url_dir, auth=auth, timeout=_TIMEOUT_MKCOL) as r:
+            if r.status not in (201, 204, 405):
+                text = await r.text()
+                raise RuntimeError(f"MKCOL {part}: {r.status} {text[:200]}")
+        _known_dirs.add(part)
+
+
 async def _upload_to_nextcloud_async(
     suggested_name: str,
     message_type: str,
@@ -93,30 +107,32 @@ async def _upload_to_nextcloud_async(
     type_subfolder = _TYPE_SUBFOLDER.get(message_type, "files")
     remote_dir = f"{base}/{source_safe}/{date_folder}/{type_subfolder}"
     remote_path = f"{remote_dir}/{safe_name}"
+    dirs = [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}", remote_dir]
 
     auth = aiohttp.BasicAuth(config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD)
     last_err = None
     for attempt in range(3):
         try:
             async with aiohttp.ClientSession() as session:
-                for part in [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}", remote_dir]:
-                    url_dir = webdav_url(part + "/")
-                    async with session.request("MKCOL", url_dir, auth=auth, timeout=_TIMEOUT_MKCOL) as r:
-                        if r.status not in (201, 204, 405):
-                            text = await r.text()
-                            raise RuntimeError(f"MKCOL {part}: {r.status} {text[:200]}")
+                await _ensure_dirs(session, auth, dirs)
                 url_file = webdav_url(remote_path)
                 if file_path is not None:
-                    data = file_path.read_bytes()
+                    # Stream from disk — don't load big videos into memory.
+                    with open(file_path, "rb") as f:
+                        async with session.put(url_file, data=f, auth=auth, timeout=_TIMEOUT_PUT) as r3:
+                            if r3.status not in (200, 201, 204):
+                                text = await r3.text()
+                                raise RuntimeError(f"PUT {remote_path}: {r3.status} {text[:200]}")
                 else:
-                    data = content
-                async with session.put(url_file, data=data, auth=auth, timeout=_TIMEOUT_PUT) as r3:
-                    if r3.status not in (200, 201, 204):
-                        text = await r3.text()
-                        raise RuntimeError(f"PUT {remote_path}: {r3.status} {text[:200]}")
+                    async with session.put(url_file, data=content, auth=auth, timeout=_TIMEOUT_PUT) as r3:
+                        if r3.status not in (200, 201, 204):
+                            text = await r3.text()
+                            raise RuntimeError(f"PUT {remote_path}: {r3.status} {text[:200]}")
             return remote_path
         except Exception as e:
             last_err = e
+            # Network errors invalidate the dir cache — server may have lost state.
+            _known_dirs.clear()
             if attempt < 2:
                 await asyncio.sleep(1.5 * (attempt + 1))
     raise last_err
@@ -165,10 +181,7 @@ async def _append_to_daily_notes_async(source_folder: str, text: str) -> str:
             pass
         new_block = f"\n---\n{time_str}\n{text.strip()}\n"
         content = (existing + new_block).strip().encode("utf-8")
-        for part in [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}"]:
-            url_dir = webdav_url(part + "/")
-            async with session.request("MKCOL", url_dir, auth=auth, timeout=_TIMEOUT_MKCOL) as _:
-                pass
+        await _ensure_dirs(session, auth, [base, f"{base}/{source_safe}", f"{base}/{source_safe}/{date_folder}"])
         async with session.put(url_file, data=content, auth=auth, timeout=_TIMEOUT_MKCOL) as r:
             if r.status not in (200, 201, 204):
                 t = await r.text()
@@ -184,8 +197,19 @@ def append_to_daily_notes(source_folder: str, text: str) -> str:
     return asyncio.run(_append_to_daily_notes_async(source_folder, text))
 
 
+_HEALTH_CACHE: dict = {"ok": False, "expires": 0.0}
+_HEALTH_TTL_SEC = 15.0
+
+
 async def check_nextcloud_async(timeout: float = 10.0) -> bool:
-    """PROPFIND root; return True if Nextcloud is reachable (for /health, /status)."""
+    """PROPFIND root; return True if Nextcloud is reachable (for /health, /status).
+    Result cached for _HEALTH_TTL_SEC to avoid hammering Nextcloud on status refresh.
+    """
+    import time as _time
+    now = _time.monotonic()
+    if now < _HEALTH_CACHE["expires"]:
+        return _HEALTH_CACHE["ok"]
+    ok = False
     try:
         auth = aiohttp.BasicAuth(config.NEXTCLOUD_USER, config.NEXTCLOUD_PASSWORD)
         url = webdav_url("")
@@ -195,6 +219,9 @@ async def check_nextcloud_async(timeout: float = 10.0) -> bool:
                 timeout=aiohttp.ClientTimeout(total=timeout),
                 headers={"Depth": "0"},
             ) as r:
-                return r.status in (200, 207)
+                ok = r.status in (200, 207)
     except Exception:
-        return False
+        ok = False
+    _HEALTH_CACHE["ok"] = ok
+    _HEALTH_CACHE["expires"] = now + _HEALTH_TTL_SEC
+    return ok

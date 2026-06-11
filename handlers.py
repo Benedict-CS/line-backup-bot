@@ -189,7 +189,7 @@ def register(handler, api):
     global line_bot_api
     line_bot_api = api
     handler.add(MessageEvent, message=TextMessage)(_handle_text)
-    handler.add(MessageEvent, message=ImageMessage)(lambda e: _handle_media_message(e))
-    handler.add(MessageEvent, message=VideoMessage)(lambda e: _handle_media_message(e))
-    handler.add(MessageEvent, message=AudioMessage)(lambda e: _handle_media_message(e))
-    handler.add(MessageEvent, message=FileMessage)(lambda e: _handle_media_message(e))
+    handler.add(MessageEvent, message=ImageMessage)(_handle_media_message)
+    handler.add(MessageEvent, message=VideoMessage)(_handle_media_message)
+    handler.add(MessageEvent, message=AudioMessage)(_handle_media_message)
+    handler.add(MessageEvent, message=FileMessage)(_handle_media_message)
